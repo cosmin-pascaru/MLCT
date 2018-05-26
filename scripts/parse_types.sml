@@ -21,9 +21,10 @@ datatype Token = TSelect
                | TInto
                | TFrom
                | TSet
-               | TCol of string
+               | TIdentifier of string
+               | TReal of real
                | TInt of int
-               | TString of int
+               | TString of string
                | TAnd
                | TOr
                | TLess
@@ -68,8 +69,53 @@ fun ParseString "" = NONE
                                 | _ => NONE
                         else NONE;
 
-fun ParseColNameChr [] = NONE
-  | ParseColNameChr (ch::x) = if (Char.isAlpha ch) then (SOME (String.implode (ch::x))) else NONE;
+fun ParseIdentifierChr [] = NONE
+  | ParseIdentifierChr (ch::x) = if (Char.isAlpha ch) then (SOME (String.implode (ch::x))) else NONE;
 
-fun ParseColName "" = NONE
-  | ParseColName value = (ParseColNameChr (String.explode value));
+fun ParseIdentifier "" = NONE
+  | ParseIdentifier value = (ParseIdentifierChr (String.explode value));
+
+fun ParseDynamic tokenStr = case (ParseInt tokenStr)
+                              of (SOME value) => (SOME (TInt value))
+                               | NONE => case (ParseReal tokenStr)
+                                           of (SOME value) => (SOME (TReal value))
+                                            | NONE => case ParseString tokenStr
+                                                        of (SOME value) => (SOME (TString value))
+                                                         | NONE => case ParseIdentifier tokenStr 
+                                                                     of (SOME value) => (SOME (TIdentifier value))
+                                                                      | NONE => NONE
+
+fun lower str = String.translate (fn c => String.str (Char.toLower c)) str
+
+fun ParseToken tokenStr = case lower tokenStr
+                            of "=="     => (SOME TIsEqual)
+                             | "!="     => (SOME TNotEqual)
+                             | "<="     => (SOME TLessEqual)
+                             | ">="     => (SOME TGreaterEqual)
+                             | "<"      => (SOME TLess)
+                             | ">"      => (SOME TGreater)
+                             | "="      => (SOME TEqual)
+                             | "or"     => (SOME TOr)
+                             | "and"    => (SOME TAnd)
+                             | "select" => (SOME TSelect)
+                             | "update" => (SOME TUpdate)
+                             | "insert" => (SOME TInsert)
+                             | "delete" => (SOME TDelete)
+                             | "where"  => (SOME TWhere)
+                             | "into"   => (SOME TInto)
+                             | "from"   => (SOME TFrom)
+                             | "set"    => (SOME TSet)
+                             | value    => ParseDynamic tokenStr
+
+
+fun TryTokenize statement = map ParseToken (String.tokens (fn c => c = #" ") statement);
+
+fun CheckForErrors [] = (SOME [])
+  | CheckForErrors (token::rest) = case token
+                                     of NONE => NONE
+                                      | (SOME actualToken) => case CheckForErrors rest
+                                                                of NONE => NONE
+                                                                 | (SOME restOfTokens) => (SOME (actualToken::restOfTokens));
+
+fun Tokenize statement = CheckForErrors (TryTokenize statement);
+
