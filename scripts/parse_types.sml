@@ -125,7 +125,7 @@ datatype 'a ParseState = ParseError of int * string
 
 infixr 9 >>= 
 fun a >>= f = case a
-                of (ParseError (lineNo, msg)) => ParseError (lineNo, msg)
+                of (ParseError (columnNo, msg)) => ParseError (columnNo, msg)
                  | (Result result) => f result;
 
 fun return a = Result a;
@@ -134,10 +134,15 @@ fun ParseColNameList ((_, (TIdentifier col))::rest) = (ParseColNameList rest)
                                                   >>= (fn (cols, rest) => return ((col::cols), rest))
   | ParseColNameList tokens = return ([], tokens);
 
+fun ParseSelectColNameList ((_, TOperatorStar)::rest) = return (["*"], rest)
+  | ParseSelectColNameList ((columnNo, (TIdentifier col))::rest) = ParseColNameList ((columnNo, TIdentifier col)::rest)
+  | ParseSelectColNameList ((columnNo, _)::rest) = ParseError (columnNo, "Expected columns")
+  | ParseSelectColNameList [] = ParseError (~1, "Expected columns");
+
 fun ParseTable ((_, TFrom)::(_, TIdentifier tableName)::rest) = return (tableName, rest)
-  | ParseTable ((_, TFrom)::(lineNo, _)::rest) = ParseError (lineNo, "Expected table name")
-  | ParseTable ((lineNo, _)::rest) = ParseError (lineNo, "Expected keyword FROM")
-  | ParseTable [] = ParseError (0, "Unexpected EOF!");
+  | ParseTable ((_, TFrom)::(columnNo, _)::rest) = ParseError (columnNo, "Expected table name")
+  | ParseTable ((columnNo, _)::rest) = ParseError (columnNo, "Expected keyword FROM")
+  | ParseTable [] = ParseError (~1, "Expected keyword FROM");
 
 
 datatype Value = Int of int
@@ -150,30 +155,30 @@ datatype Expr = Equal of Value * Value
               | Less of Value * Value
               | NotEqual of Value * Value;
 
-datatype WhereCondition = Single of Expr
+datatype WhereCondition = NoCondition
+                        | Single of Expr
                         | And of WhereCondition * WhereCondition
                         | Or of WhereCondition * WhereCondition;
 
 
-fun ParseValue [] = ParseError (0, "Unexpected EOF")
+fun ParseValue [] = ParseError (~1, "Expected value or identifier.")
   | ParseValue (token::rest) = 
     case token
       of (_, (TInt value))        => return (Int value, rest)
        | (_, (TReal value))       => return (Real value, rest)
        | (_, (TString value))     => return (String value, rest)
        | (_, (TIdentifier value)) => return (Identifier value, rest)
-       | (lineNo, _)              => ParseError (lineNo, "Expected value or identifier.");
+       | (columnNo, _)              => ParseError (columnNo, "Expected value or identifier.");
 
-fun ParseExpr [] = ParseError (0, "Unexpected EOF")
-  | ParseExpr tokens = (ParseValue tokens)
+fun ParseExpr tokens = (ParseValue tokens)
                    >>= (fn (rvalue, rest) =>
         (case rest
            of ((_, TEqual)::rest)    => (ParseValue rest) >>= (fn (lvalue, rest) => return (Equal (rvalue, lvalue), rest)) 
             | ((_, TGreater)::rest)  => (ParseValue rest) >>= (fn (lvalue, rest) => return (Greater (rvalue, lvalue), rest))
             | ((_, TLess)::rest)     => (ParseValue rest) >>= (fn (lvalue, rest) => return (Less (rvalue, lvalue), rest))
             | ((_, TNotEqual)::rest) => (ParseValue rest) >>= (fn (lvalue, rest) => return (NotEqual (rvalue, lvalue), rest))
-            | ((lineNo, _)::rest) => ParseError (lineNo, "Expected operator")
-            | [] => ParseError (0, "Unexpected EOF")));
+            | ((columnNo, _)::rest) => ParseError (columnNo, "Expected operator")
+            | [] => ParseError (~1, "Expected operator")));
 
 fun ParseWhereNextCondition ParseWhereConditions (expr, []) = return (expr, [])
   | ParseWhereNextCondition ParseWhereConditions (expr, (token::rest)) = 
@@ -184,22 +189,22 @@ fun ParseWhereNextCondition ParseWhereConditions (expr, []) = return (expr, [])
 
 fun ParseWhereConditions ((_, TOpeningParanthesis)::tokens) = (ParseWhereConditions tokens) >>= (fn (condition, rest) =>
     case rest
-      of [] => ParseError (0, "Unexpected EOF")
+      of [] => ParseError (~1, "Expected closing paranthesis")
        | ((_, TClosingParanthesis)::[]) => return (condition, [])
        | ((_, TClosingParanthesis)::rest) => (ParseWhereNextCondition ParseWhereConditions (condition, rest))
-       | ((lineNo, _)::_) => ParseError (lineNo, "Expected closing paranthesis")
+       | ((columnNo, _)::_) => ParseError (columnNo, "Expected closing paranthesis")
    )
   | ParseWhereConditions tokens = (ParseExpr tokens) >>= (fn (expr, tokens) => (ParseWhereNextCondition ParseWhereConditions) (Single expr, tokens));
 
 fun ParseWhere ((_, TWhere)::tokens) = ParseWhereConditions tokens
-  | ParseWhere [] = Result (Single (Equal (Int 1, Int 1)), [])
-  | ParseWhere ((lineNo, _)::_) = ParseError (lineNo, "Expected WHERE keyword.")
+  | ParseWhere [] = Result (NoCondition, [])
+  | ParseWhere ((columnNo, _)::_) = ParseError (columnNo, "Expected WHERE keyword.")
 
-fun ParseSelectFromTokens ((lineNo, TSelect)::tokens) = (ParseColNameList tokens)
+fun ParseSelectFromTokens ((columnNo, TSelect)::tokens) = (ParseSelectColNameList tokens)
                                                     >>= (fn (colList, rest) => (ParseTable rest)
                                                     >>= (fn (tableName, rest) => (ParseWhere rest)
                                                     >>= (fn (conditions, rest) => return (colList, tableName, conditions))))
-  | ParseSelectFromTokens ((lineNo, _)::tokens) = ParseError (lineNo, "Expected SELECT keyword.");
+  | ParseSelectFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, "Expected SELECT keyword.");
 
 (*
 fun ParseQueryFromTokens (head:tokens) = case head
