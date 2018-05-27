@@ -29,11 +29,9 @@ datatype Token = TSelect
                | TOr
                | TLess
                | TGreater
-               | TLessEqual
-               | TGreaterEqual
-               | TIsEqual
                | TNotEqual
-               | TEqual;
+               | TEqual
+               | TExpr of string;
 
 fun ParseIntLeft value [] = (SOME value)
   | ParseIntLeft leftVal (ch::x) = if (Char.isDigit ch)
@@ -76,46 +74,53 @@ fun ParseIdentifier "" = NONE
   | ParseIdentifier value = (ParseIdentifierChr (String.explode value));
 
 fun ParseDynamic tokenStr = case (ParseInt tokenStr)
-                              of (SOME value) => (SOME (TInt value))
+                              of (SOME value) => (TInt value)
                                | NONE => case (ParseReal tokenStr)
-                                           of (SOME value) => (SOME (TReal value))
+                                           of (SOME value) => (TReal value)
                                             | NONE => case ParseString tokenStr
-                                                        of (SOME value) => (SOME (TString value))
+                                                        of (SOME value) => (TString value)
                                                          | NONE => case ParseIdentifier tokenStr 
-                                                                     of (SOME value) => (SOME (TIdentifier value))
-                                                                      | NONE => NONE
+                                                                     of (SOME value) => (TIdentifier value)
+                                                                      | NONE => (TExpr tokenStr);
 
 fun lower str = String.translate (fn c => String.str (Char.toLower c)) str
 
 fun ParseToken tokenStr = case lower tokenStr
-                            of "=="     => (SOME TIsEqual)
-                             | "!="     => (SOME TNotEqual)
-                             | "<="     => (SOME TLessEqual)
-                             | ">="     => (SOME TGreaterEqual)
-                             | "<"      => (SOME TLess)
-                             | ">"      => (SOME TGreater)
-                             | "="      => (SOME TEqual)
-                             | "or"     => (SOME TOr)
-                             | "and"    => (SOME TAnd)
-                             | "select" => (SOME TSelect)
-                             | "update" => (SOME TUpdate)
-                             | "insert" => (SOME TInsert)
-                             | "delete" => (SOME TDelete)
-                             | "where"  => (SOME TWhere)
-                             | "into"   => (SOME TInto)
-                             | "from"   => (SOME TFrom)
-                             | "set"    => (SOME TSet)
+                            of "<"      => TLess
+                             | ">"      => TGreater
+                             | "="      => TEqual
+                             | "~"      => TNotEqual
+                             | "or"     => TOr
+                             | "and"    => TAnd
+                             | "select" => TSelect
+                             | "update" => TUpdate
+                             | "insert" => TInsert
+                             | "delete" => TDelete
+                             | "where"  => TWhere
+                             | "into"   => TInto
+                             | "from"   => TFrom
+                             | "set"    => TSet
                              | value    => ParseDynamic tokenStr
 
 
-fun TryTokenize statement = map ParseToken (String.tokens (fn c => c = #" ") statement);
+fun SplitByDelimitersLeft f lastToken [] = lastToken::nil
+  | SplitByDelimitersLeft f lastToken (ch::x) = if (f ch)
+                                           then [lastToken] @ [ch::nil] @ (SplitByDelimitersLeft f [] x)
+                                           else (SplitByDelimitersLeft f (lastToken @ (ch::nil)) x); 
 
-fun CheckForErrors [] = (SOME [])
-  | CheckForErrors (token::rest) = case token
-                                     of NONE => NONE
-                                      | (SOME actualToken) => case CheckForErrors rest
-                                                                of NONE => NONE
-                                                                 | (SOME restOfTokens) => (SOME (actualToken::restOfTokens));
+fun SplitByDelimiters f "" = []
+  | SplitByDelimiters f s = map String.implode (SplitByDelimitersLeft f [] (String.explode s))
 
-fun Tokenize statement = CheckForErrors (TryTokenize statement);
+fun isNonOperatorDelimiter s "" = false
+  | isNonOperatorDelimiter s delimiters = case String.tokens (fn c => Char.contains delimiters c) s
+                                               of [] => true
+                                                | _ => false;
 
+fun Tokenize statement = map ParseToken (List.filter (fn s => if isNonOperatorDelimiter s " ," then false else true) (SplitByDelimiters (fn c => Char.contains " ,=" c) statement));
+
+(*
+fun ParseQueryFromTokens (head:tokens) = case head 
+                                          of TSelect => ParseSelectFromTokens
+                                           | TUpdate => ParseUpdateFromTokens
+                                           | TInsert => ParseInsertFromTokens
+                                           | TDelete => ParseDeleteFromTokens*)
