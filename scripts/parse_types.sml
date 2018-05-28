@@ -5,6 +5,7 @@ datatype Token = TSelect
                | TWhere
                | TInto
                | TFrom
+               | TValues
                | TSet
                | TIdentifier of string
                | TReal of real
@@ -89,6 +90,7 @@ fun ParseToken tokenStr = case lower tokenStr
                              | "where"  => TWhere
                              | "into"   => TInto
                              | "from"   => TFrom
+                             | "values" => TValues
                              | "set"    => TSet
                              | "*"      => TOperatorStar
                              | value    => ParseDynamic tokenStr
@@ -207,8 +209,41 @@ fun ParseSelectFromTokens ((columnNo, TSelect)::tokens) = (ParseSelectColNameLis
                                                     >>= (fn (colList, rest) => (ParseTable rest)
                                                     >>= (fn (tableName, rest) => (ParseWhere rest)
                                                     >>= (fn (conditions, rest) => return (colList, tableName, conditions))))
-  | ParseSelectFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, "Expected SELECT keyword.");
+  | ParseSelectFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, "Expected SELECT keyword.")
+  | ParseSelectFromTokens [] = ParseError (~1, "Expected SELECT keyword.");
 
+
+fun ParseDeleteFromTokens ((columnNo, TDelete)::tokens) = (ParseTable tokens)
+                                                    >>= (fn (tableName, rest) => (ParseWhere rest)
+                                                    >>= (fn (conditions, rest) => return (tableName, conditions)))
+  | ParseDeleteFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, "Expected DELETE keyword.")
+  | ParseDeleteFromTokens [] = ParseError (~1, "Expected DELETE keyword.");
+
+
+fun ParseSingleValue [] = ParseError (~1, "Expected a constant value.")
+  | ParseSingleValue (token::rest) = 
+    case token
+      of (_, (TInt value))        => return (Int value, rest)
+       | (_, (TReal value))       => return (Real value, rest)
+       | (_, (TString value))     => return (String value, rest)
+       | (columnNo, _)              => ParseError (columnNo, "Expected a constant value.")
+
+fun ParseValues tokens = (ParseSingleValue tokens)
+                         >>= (fn (col, rest) => case rest of [] => return (col::nil, rest) | _ => (ParseValues rest)
+                         >>= (fn (cols, rest) => return (col::cols, rest)));
+
+fun ParseInsertValues ((_, TValues)::rest) = (ParseValues rest)
+  | ParseInsertValues ((columnNo, _)::rest) = ParseError (columnNo, "Expected VALUES keyword.")
+  | ParseInsertValues [] = ParseError (~1, "Expected VALUES keyword.");
+
+fun ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(_, TIdentifier tableName)::tokens) = (ParseInsertValues tokens)
+                                                    >>= (fn (conditions, rest) => return (tableName, conditions))
+  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(columnNo, _)::tokens) = ParseError (columnNo, "Expected table name.")
+  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::[]) = ParseError (~1, "Expected table name.")
+  | ParseInsertFromTokens ((_, TInsert)::(columnNo, _)::tokens) = ParseError (columnNo, "Expected INTO keyword.")
+  | ParseInsertFromTokens ((_, TInsert)::[]) = ParseError (~1, "Expected INTO keyword.")
+  | ParseInsertFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, "Expected INSERT keyword.")
+  | ParseInsertFromTokens [] = ParseError (~1, "Expected INSERT keyword.");
 
 (*
 fun ParseQueryFromTokens (head:tokens) = case head
