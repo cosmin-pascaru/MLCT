@@ -246,9 +246,13 @@ fun ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(_, TIdentifier tableName):
   | ParseInsertFromTokens [] = ParseError (~1, "Expected INSERT keyword.");
 
 (*
-fun ParseQueryFromTokens (head:tokens) = case head
-                                          of TSelect => ParseSelectFromTokens
-                                           | TUpdate => ParseUpdateFromTokens
-                                           | TInsert => ParseInsertFromTokens
-                                           | TDelete => ParseDeleteFromTokens;
+fun ParseQueryFromTokens (head::tokens) = case head
+                                          of TSelect => (ParseSelectFromTokens (head::tokens))
+                                                    >>= (fn (cols, tableName, whereConditions) => return (Select cols, tableName, whereConditions))
+                                           | TUpdate => (ParseUpdateFromTokens (head::tokens))
+                                                    >>= (fn (tableName, sets) => return (Update tableName, sets))
+                                           | TInsert => (ParseInsertFromTokens (head::tokens))
+                                                    >>= (fn (tableName, values) => return (Insert tableName, values))
+                                           | TDelete => (ParseDeleteFromTokens (head::tokens))
+                                                    >>= (fn (tableName, whereConditions) => return (Delete tableName, whereConditions));
 *)
