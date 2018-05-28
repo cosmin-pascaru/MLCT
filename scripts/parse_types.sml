@@ -130,11 +130,14 @@ fun a >>= f = case a
 
 fun return a = Result a;
 
-fun ParseColNameList ((_, (TIdentifier col))::rest) = (ParseColNameList rest)
-                                                  >>= (fn (cols, rest) => return ((col::cols), rest))
-  | ParseColNameList tokens = return ([], tokens);
+datatype ColNameList = All
+                     | Columns of (string list);
 
-fun ParseSelectColNameList ((_, TOperatorStar)::rest) = return (["*"], rest)
+fun ParseColNameList ((_, (TIdentifier col))::rest) = (ParseColNameList rest)
+                                                  >>= (fn (Columns cols, rest) => return (Columns (col::cols), rest))
+  | ParseColNameList tokens = return (Columns [], tokens);
+
+fun ParseSelectColNameList ((_, TOperatorStar)::rest) = return (All, rest)
   | ParseSelectColNameList ((columnNo, (TIdentifier col))::rest) = ParseColNameList ((columnNo, TIdentifier col)::rest)
   | ParseSelectColNameList ((columnNo, _)::rest) = ParseError (columnNo, "Expected columns")
   | ParseSelectColNameList [] = ParseError (~1, "Expected columns");
@@ -205,6 +208,7 @@ fun ParseSelectFromTokens ((columnNo, TSelect)::tokens) = (ParseSelectColNameLis
                                                     >>= (fn (tableName, rest) => (ParseWhere rest)
                                                     >>= (fn (conditions, rest) => return (colList, tableName, conditions))))
   | ParseSelectFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, "Expected SELECT keyword.");
+
 
 (*
 fun ParseQueryFromTokens (head:tokens) = case head
