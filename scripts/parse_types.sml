@@ -98,10 +98,10 @@ fun ParseToken tokenStr = case lower tokenStr
 
 fun SplitByDelimitersLeft f (lastPos, lastToken) (currentPos, []) = (lastPos, lastToken)::nil
   | SplitByDelimitersLeft f (lastPos, lastToken) (currentPos, (ch::x)) = if (f ch)
-                                           then [(lastPos, lastToken)] @
-                                                [(currentPos, ch::nil)] @
+                                           then (lastPos, lastToken) ::
+                                                (currentPos, ch::nil) ::
                                                 (SplitByDelimitersLeft f (currentPos + 1, []) ((currentPos + 1), x))
-                                           else (SplitByDelimitersLeft f (lastPos, (lastToken @ (ch::nil))) ((currentPos + 1), x)); 
+                                           else (SplitByDelimitersLeft f (lastPos, (List.concat [lastToken, (ch::nil)])) ((currentPos + 1), x)); 
 
 fun SplitByDelimiters f "" = []
   | SplitByDelimiters f s = map (fn (pos, token) => (pos, (String.implode token))) (SplitByDelimitersLeft f (0, []) (0, (String.explode s)))
