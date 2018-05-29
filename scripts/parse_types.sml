@@ -317,13 +317,27 @@ fun ShouldSelectRow _  _ [] = RuntimeException "Table must not be void."
                                            >>= (fn (leftIsTrue) => (ShouldSelectRow expr2 dbColSpecs row)
                                            >>= (fn (rightIsTrue) => return (leftIsTrue orelse rightIsTrue)));
 
+fun SelectColumn colName [] [] = RuntimeException ("Column " ^ colName ^ " not found")
+  | SelectColumn _ _ [] = RuntimeException "DB integrity error: more columns than values"
+  | SelectColumn _ [] _ = RuntimeException "DB integrity error: more values than columns"
+  | SelectColumn colName ((dbColType, dbColName)::restDbColSpecs) (rowValue::restRow) =
+      (if colName = dbColName
+       then return rowValue
+       else SelectColumn colName restDbColSpecs restRow);
+
+fun SelectColumns All dbColSpecs row = return row
+  | SelectColumns (Columns (col::rest)) dbColSpecs row = (SelectColumn col dbColSpecs row)
+                                                     >>= (fn (value) => (SelectColumns (Columns rest) dbColSpecs row)
+                                                     >>= (fn (values) => return (value::values)))
+  | SelectColumns (Columns []) dbColSpecs row = return [];
+
 fun ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
   | ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
           (ShouldSelectRow whereConditions dbColSpecs row)
       >>= (fn (shouldSelectRow) => (ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
       >>= (fn (rows) => (if shouldSelectRow
-                         then return (row::rows)
-                         else return (rows))))
+                         then (SelectColumns columns dbColSpecs row) >>= (fn (projectedRow) => return (projectedRow::rows))
+                         else return rows)))
   | ExecuteSelect _ _ = RuntimeException "Invalid query or table."
 
 fun IsReadQuery query = case Tokenize query
