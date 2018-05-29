@@ -55,6 +55,526 @@
           <layout>colset STRING = string;</layout>
         </color>
       </block>
+      <block id="ID1412613540">
+        <id>Parsing declarations</id>
+        <ml id="ID1412614525">datatype Token = TSelect
+               | TInsert
+               | TUpdate
+               | TDelete
+               | TWhere
+               | TInto
+               | TFrom
+               | TValues
+               | TSet
+               | TIdentifier of string
+               | TReal of real
+               | TInt of int
+               | TString of string
+               | TAnd
+               | TOr
+               | TLess
+               | TGreater
+               | TNotEqual
+               | TEqual
+               | TInvalid of string
+               | TOpeningParanthesis
+               | TClosingParanthesis
+               | TOperatorStar;
+
+fun ParseIntLeft value [] = (SOME value)
+  | ParseIntLeft leftVal (ch::x) = if (Char.isDigit ch)
+                                   then case (ParseIntLeft (leftVal * 10 + ((ord ch) - 48)) x)
+                                          of NONE =&gt; NONE
+                                           | (SOME value) =&gt; (SOME value)
+                                   else NONE;
+
+fun ParseInt &quot;&quot; = NONE
+  | ParseInt value = (ParseIntLeft 0 (String.explode value));
+
+fun subunitary value = if value &gt;= 1.0 then subunitary (value / 10.0) else value;
+
+fun ParseRealLeft value [] = (SOME value)
+  | ParseRealLeft leftVal (ch::x) = if (Char.isDigit ch)
+                                    then case (ParseRealLeft (leftVal * 10.0 + real((ord ch) - 48)) x)
+                                           of NONE =&gt; NONE
+                                            | (SOME value) =&gt; (SOME value)
+                                    else if (Char.contains &quot;.&quot; ch)
+                                         then case (ParseIntLeft 0 x)
+                                                of NONE =&gt; NONE
+                                                 | (SOME value) =&gt; (SOME (leftVal + (subunitary (real(value)))))
+                                         else NONE;
+
+fun ParseReal &quot;&quot; = NONE
+  | ParseReal value = (ParseRealLeft 0.0 (String.explode value));
+
+  
+fun ParseString &quot;&quot; = NONE
+  | ParseString value = if (String.isPrefix &quot;&apos;&quot; value) andalso (String.isSuffix &quot;&apos;&quot; value)
+                        then case (String.tokens (fn c =&gt; c = #&quot;&apos;&quot; ) value)
+                               of (token::[]) =&gt; (SOME token)
+                                | _ =&gt; NONE
+                        else NONE;
+
+fun ParseIdentifierChr [] = NONE
+  | ParseIdentifierChr (ch::x) = if (Char.isAlpha ch) then (SOME (String.implode (ch::x))) else NONE;
+
+fun ParseIdentifier &quot;&quot; = NONE
+  | ParseIdentifier value = (ParseIdentifierChr (String.explode value));
+
+fun ParseDynamic tokenStr = case (ParseInt tokenStr)
+                              of (SOME value) =&gt; (TInt value)
+                               | NONE =&gt; case (ParseReal tokenStr)
+                                           of (SOME value) =&gt; (TReal value)
+                                            | NONE =&gt; case ParseString tokenStr
+                                                        of (SOME value) =&gt; (TString value)
+                                                         | NONE =&gt; case ParseIdentifier tokenStr 
+                                                                     of (SOME value) =&gt; (TIdentifier value)
+                                                                      | NONE =&gt; (TInvalid tokenStr);
+
+fun lower str = String.translate (fn c =&gt; String.str (Char.toLower c)) str
+
+fun ParseToken tokenStr = case lower tokenStr
+                            of &quot;&lt;&quot;      =&gt; TLess
+                             | &quot;&gt;&quot;      =&gt; TGreater
+                             | &quot;=&quot;      =&gt; TEqual
+                             | &quot;~&quot;      =&gt; TNotEqual
+                             | &quot;(&quot;      =&gt; TOpeningParanthesis
+                             | &quot;)&quot;      =&gt; TClosingParanthesis
+                             | &quot;or&quot;     =&gt; TOr
+                             | &quot;and&quot;    =&gt; TAnd
+                             | &quot;select&quot; =&gt; TSelect
+                             | &quot;update&quot; =&gt; TUpdate
+                             | &quot;insert&quot; =&gt; TInsert
+                             | &quot;delete&quot; =&gt; TDelete
+                             | &quot;where&quot;  =&gt; TWhere
+                             | &quot;into&quot;   =&gt; TInto
+                             | &quot;from&quot;   =&gt; TFrom
+                             | &quot;values&quot; =&gt; TValues
+                             | &quot;set&quot;    =&gt; TSet
+                             | &quot;*&quot;      =&gt; TOperatorStar
+                             | value    =&gt; ParseDynamic tokenStr
+
+
+fun SplitByDelimitersLeft f (lastPos, lastToken) (currentPos, []) = (lastPos, lastToken)::nil
+  | SplitByDelimitersLeft f (lastPos, lastToken) (currentPos, (ch::x)) = if (f ch)
+                                           then (lastPos, lastToken) ::
+                                                (currentPos, ch::nil) ::
+                                                (SplitByDelimitersLeft f (currentPos + 1, []) ((currentPos + 1), x))
+                                           else (SplitByDelimitersLeft f (lastPos, (List.concat [lastToken, (ch::nil)])) ((currentPos + 1), x)); 
+
+fun SplitByDelimiters f &quot;&quot; = []
+  | SplitByDelimiters f s = map (fn (pos, token) =&gt; (pos, (String.implode token))) (SplitByDelimitersLeft f (0, []) (0, (String.explode s)))
+
+fun isNotNonOperatorDelimiter s &quot;&quot; = false
+  | isNotNonOperatorDelimiter s delimiters = case String.tokens (fn c =&gt; Char.contains delimiters c) s
+                                               of [] =&gt; false
+                                                | _ =&gt; true;
+
+fun SplitBySpecialTokens statement = SplitByDelimiters (fn c =&gt; Char.contains &quot; ,=&lt;&gt;~()&quot; c) statement;
+
+fun SplitTokens statement = List.filter (fn (pos, token) =&gt; isNotNonOperatorDelimiter token &quot; ,&quot;) (SplitBySpecialTokens statement);
+
+fun Tokenize statement = map (fn (pos, token) =&gt; (pos, ParseToken token)) (SplitTokens statement);
+
+(*SELECT col1 FROM table WHERE ;*)
+(*INSERT INTO table(col1, col2) VALUES 1, &apos;2&apos;;*)
+(*UPDATE table SET col1=a WHERE ;*)
+(*DELETE FROM table WHERE ;*)
+
+datatype &apos;a ParseState = ParseError of int * string
+                       | Result of &apos;a
+
+infixr 9 &gt;&gt;= 
+fun a &gt;&gt;= f = case a
+                of (ParseError (columnNo, msg)) =&gt; ParseError (columnNo, msg)
+                 | (Result result) =&gt; f result;
+
+fun return a = Result a;
+
+datatype ColNameList = All
+                     | Columns of (string list);
+
+fun ParseColNameList ((_, (TIdentifier col))::rest) = (ParseColNameList rest)
+                                                  &gt;&gt;= (fn (Columns cols, rest) =&gt; return (Columns (col::cols), rest))
+  | ParseColNameList tokens = return (Columns [], tokens);
+
+fun ParseSelectColNameList ((_, TOperatorStar)::rest) = return (All, rest)
+  | ParseSelectColNameList ((columnNo, (TIdentifier col))::rest) = ParseColNameList ((columnNo, TIdentifier col)::rest)
+  | ParseSelectColNameList ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected columns&quot;)
+  | ParseSelectColNameList [] = ParseError (~1, &quot;Expected columns&quot;);
+
+fun ParseTable ((_, TFrom)::(_, TIdentifier tableName)::rest) = return (tableName, rest)
+  | ParseTable ((_, TFrom)::(columnNo, _)::rest) = ParseError (columnNo, &quot;Expected table name&quot;)
+  | ParseTable ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected keyword FROM&quot;)
+  | ParseTable [] = ParseError (~1, &quot;Expected keyword FROM&quot;);
+
+
+datatype Value = Int of int
+               | Real of real
+               | String of string
+               | Identifier of string;
+
+datatype Expr = Equal of Value * Value
+              | Greater of Value * Value
+              | Less of Value * Value
+              | NotEqual of Value * Value;
+
+datatype WhereCondition = NoCondition
+                        | Single of Expr
+                        | And of WhereCondition * WhereCondition
+                        | Or of WhereCondition * WhereCondition;
+
+
+fun ParseValue [] = ParseError (~1, &quot;Expected value or identifier.&quot;)
+  | ParseValue (token::rest) = 
+    case token
+      of (_, (TInt value))        =&gt; return (Int value, rest)
+       | (_, (TReal value))       =&gt; return (Real value, rest)
+       | (_, (TString value))     =&gt; return (String value, rest)
+       | (_, (TIdentifier value)) =&gt; return (Identifier value, rest)
+       | (columnNo, _)              =&gt; ParseError (columnNo, &quot;Expected value or identifier.&quot;);
+
+fun ParseExpr tokens = (ParseValue tokens)
+                   &gt;&gt;= (fn (rvalue, rest) =&gt;
+        (case rest
+           of ((_, TEqual)::rest)    =&gt; (ParseValue rest) &gt;&gt;= (fn (lvalue, rest) =&gt; return (Equal (rvalue, lvalue), rest)) 
+            | ((_, TGreater)::rest)  =&gt; (ParseValue rest) &gt;&gt;= (fn (lvalue, rest) =&gt; return (Greater (rvalue, lvalue), rest))
+            | ((_, TLess)::rest)     =&gt; (ParseValue rest) &gt;&gt;= (fn (lvalue, rest) =&gt; return (Less (rvalue, lvalue), rest))
+            | ((_, TNotEqual)::rest) =&gt; (ParseValue rest) &gt;&gt;= (fn (lvalue, rest) =&gt; return (NotEqual (rvalue, lvalue), rest))
+            | ((columnNo, _)::rest) =&gt; ParseError (columnNo, &quot;Expected operator&quot;)
+            | [] =&gt; ParseError (~1, &quot;Expected operator&quot;)));
+
+fun ParseWhereNextCondition ParseWhereConditions (expr, []) = return (expr, [])
+  | ParseWhereNextCondition ParseWhereConditions (expr, (token::rest)) = 
+    case token
+        of (_, TAnd) =&gt; (ParseWhereConditions rest) &gt;&gt;= (fn (condition, rest) =&gt; return (And (expr, condition), rest))
+         | (_, TOr) =&gt; (ParseWhereConditions rest) &gt;&gt;= (fn (condition, rest) =&gt; return (Or (expr, condition), rest))
+         | _ =&gt; return (expr, (token::rest));
+
+fun ParseWhereConditions ((_, TOpeningParanthesis)::tokens) = (ParseWhereConditions tokens) &gt;&gt;= (fn (condition, rest) =&gt;
+    case rest
+      of [] =&gt; ParseError (~1, &quot;Expected closing paranthesis&quot;)
+       | ((_, TClosingParanthesis)::[]) =&gt; return (condition, [])
+       | ((_, TClosingParanthesis)::rest) =&gt; (ParseWhereNextCondition ParseWhereConditions (condition, rest))
+       | ((columnNo, _)::_) =&gt; ParseError (columnNo, &quot;Expected closing paranthesis&quot;)
+   )
+  | ParseWhereConditions tokens = (ParseExpr tokens) &gt;&gt;= (fn (expr, tokens) =&gt; (ParseWhereNextCondition ParseWhereConditions) (Single expr, tokens));
+
+fun ParseWhere ((_, TWhere)::tokens) = ParseWhereConditions tokens
+  | ParseWhere [] = Result (NoCondition, [])
+  | ParseWhere ((columnNo, _)::_) = ParseError (columnNo, &quot;Expected WHERE keyword.&quot;)
+
+fun ParseSelectFromTokens ((columnNo, TSelect)::tokens) = (ParseSelectColNameList tokens)
+                                                    &gt;&gt;= (fn (colList, rest) =&gt; (ParseTable rest)
+                                                    &gt;&gt;= (fn (tableName, rest) =&gt; (ParseWhere rest)
+                                                    &gt;&gt;= (fn (conditions, rest) =&gt; return (colList, tableName, conditions))))
+  | ParseSelectFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected SELECT keyword.&quot;)
+  | ParseSelectFromTokens [] = ParseError (~1, &quot;Expected SELECT keyword.&quot;);
+
+
+fun ParseDeleteFromTokens ((columnNo, TDelete)::tokens) = (ParseTable tokens)
+                                                    &gt;&gt;= (fn (tableName, rest) =&gt; (ParseWhere rest)
+                                                    &gt;&gt;= (fn (conditions, rest) =&gt; return (tableName, conditions)))
+  | ParseDeleteFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected DELETE keyword.&quot;)
+  | ParseDeleteFromTokens [] = ParseError (~1, &quot;Expected DELETE keyword.&quot;);
+
+
+fun ParseSingleValue [] = ParseError (~1, &quot;Expected a constant value.&quot;)
+  | ParseSingleValue (token::rest) = 
+    case token
+      of (_, (TInt value))        =&gt; return (Int value, rest)
+       | (_, (TReal value))       =&gt; return (Real value, rest)
+       | (_, (TString value))     =&gt; return (String value, rest)
+       | (columnNo, _)              =&gt; ParseError (columnNo, &quot;Expected a constant value.&quot;)
+
+fun ParseValues tokens = (ParseSingleValue tokens)
+                         &gt;&gt;= (fn (col, rest) =&gt; case rest of [] =&gt; return (col::nil, rest) | _ =&gt; (ParseValues rest)
+                         &gt;&gt;= (fn (cols, rest) =&gt; return (col::cols, rest)));
+
+fun ParseInsertValues ((_, TValues)::rest) = (ParseValues rest)
+  | ParseInsertValues ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected VALUES keyword.&quot;)
+  | ParseInsertValues [] = ParseError (~1, &quot;Expected VALUES keyword.&quot;);
+
+fun ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(_, TIdentifier tableName)::tokens) = (ParseInsertValues tokens)
+                                                    &gt;&gt;= (fn (conditions, rest) =&gt; return (tableName, conditions))
+  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected table name.&quot;)
+  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::[]) = ParseError (~1, &quot;Expected table name.&quot;)
+  | ParseInsertFromTokens ((_, TInsert)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INTO keyword.&quot;)
+  | ParseInsertFromTokens ((_, TInsert)::[]) = ParseError (~1, &quot;Expected INTO keyword.&quot;)
+  | ParseInsertFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INSERT keyword.&quot;)
+  | ParseInsertFromTokens [] = ParseError (~1, &quot;Expected INSERT keyword.&quot;);
+
+(*
+fun ParseQueryFromTokens (head::tokens) = case head
+                                          of TSelect =&gt; (ParseSelectFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (cols, tableName, whereConditions) =&gt; return (Select cols, tableName, whereConditions))
+                                           | TUpdate =&gt; (ParseUpdateFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, sets) =&gt; return (Update tableName, sets))
+                                           | TInsert =&gt; (ParseInsertFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, values) =&gt; return (Insert tableName, values))
+                                           | TDelete =&gt; (ParseDeleteFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, whereConditions) =&gt; return (Delete tableName, whereConditions));
+*)
+          <layout>datatype Token = TSelect
+               | TInsert
+               | TUpdate
+               | TDelete
+               | TWhere
+               | TInto
+               | TFrom
+               | TValues
+               | TSet
+               | TIdentifier of string
+               | TReal of real
+               | TInt of int
+               | TString of string
+               | TAnd
+               | TOr
+               | TLess
+               | TGreater
+               | TNotEqual
+               | TEqual
+               | TInvalid of string
+               | TOpeningParanthesis
+               | TClosingParanthesis
+               | TOperatorStar;
+
+fun ParseIntLeft value [] = (SOME value)
+  | ParseIntLeft leftVal (ch::x) = if (Char.isDigit ch)
+                                   then case (ParseIntLeft (leftVal * 10 + ((ord ch) - 48)) x)
+                                          of NONE =&gt; NONE
+                                           | (SOME value) =&gt; (SOME value)
+                                   else NONE;
+
+fun ParseInt &quot;&quot; = NONE
+  | ParseInt value = (ParseIntLeft 0 (String.explode value));
+
+fun subunitary value = if value &gt;= 1.0 then subunitary (value / 10.0) else value;
+
+fun ParseRealLeft value [] = (SOME value)
+  | ParseRealLeft leftVal (ch::x) = if (Char.isDigit ch)
+                                    then case (ParseRealLeft (leftVal * 10.0 + real((ord ch) - 48)) x)
+                                           of NONE =&gt; NONE
+                                            | (SOME value) =&gt; (SOME value)
+                                    else if (Char.contains &quot;.&quot; ch)
+                                         then case (ParseIntLeft 0 x)
+                                                of NONE =&gt; NONE
+                                                 | (SOME value) =&gt; (SOME (leftVal + (subunitary (real(value)))))
+                                         else NONE;
+
+fun ParseReal &quot;&quot; = NONE
+  | ParseReal value = (ParseRealLeft 0.0 (String.explode value));
+
+  
+fun ParseString &quot;&quot; = NONE
+  | ParseString value = if (String.isPrefix &quot;&apos;&quot; value) andalso (String.isSuffix &quot;&apos;&quot; value)
+                        then case (String.tokens (fn c =&gt; c = #&quot;&apos;&quot; ) value)
+                               of (token::[]) =&gt; (SOME token)
+                                | _ =&gt; NONE
+                        else NONE;
+
+fun ParseIdentifierChr [] = NONE
+  | ParseIdentifierChr (ch::x) = if (Char.isAlpha ch) then (SOME (String.implode (ch::x))) else NONE;
+
+fun ParseIdentifier &quot;&quot; = NONE
+  | ParseIdentifier value = (ParseIdentifierChr (String.explode value));
+
+fun ParseDynamic tokenStr = case (ParseInt tokenStr)
+                              of (SOME value) =&gt; (TInt value)
+                               | NONE =&gt; case (ParseReal tokenStr)
+                                           of (SOME value) =&gt; (TReal value)
+                                            | NONE =&gt; case ParseString tokenStr
+                                                        of (SOME value) =&gt; (TString value)
+                                                         | NONE =&gt; case ParseIdentifier tokenStr 
+                                                                     of (SOME value) =&gt; (TIdentifier value)
+                                                                      | NONE =&gt; (TInvalid tokenStr);
+
+fun lower str = String.translate (fn c =&gt; String.str (Char.toLower c)) str
+
+fun ParseToken tokenStr = case lower tokenStr
+                            of &quot;&lt;&quot;      =&gt; TLess
+                             | &quot;&gt;&quot;      =&gt; TGreater
+                             | &quot;=&quot;      =&gt; TEqual
+                             | &quot;~&quot;      =&gt; TNotEqual
+                             | &quot;(&quot;      =&gt; TOpeningParanthesis
+                             | &quot;)&quot;      =&gt; TClosingParanthesis
+                             | &quot;or&quot;     =&gt; TOr
+                             | &quot;and&quot;    =&gt; TAnd
+                             | &quot;select&quot; =&gt; TSelect
+                             | &quot;update&quot; =&gt; TUpdate
+                             | &quot;insert&quot; =&gt; TInsert
+                             | &quot;delete&quot; =&gt; TDelete
+                             | &quot;where&quot;  =&gt; TWhere
+                             | &quot;into&quot;   =&gt; TInto
+                             | &quot;from&quot;   =&gt; TFrom
+                             | &quot;values&quot; =&gt; TValues
+                             | &quot;set&quot;    =&gt; TSet
+                             | &quot;*&quot;      =&gt; TOperatorStar
+                             | value    =&gt; ParseDynamic tokenStr
+
+
+fun SplitByDelimitersLeft f (lastPos, lastToken) (currentPos, []) = (lastPos, lastToken)::nil
+  | SplitByDelimitersLeft f (lastPos, lastToken) (currentPos, (ch::x)) = if (f ch)
+                                           then (lastPos, lastToken) ::
+                                                (currentPos, ch::nil) ::
+                                                (SplitByDelimitersLeft f (currentPos + 1, []) ((currentPos + 1), x))
+                                           else (SplitByDelimitersLeft f (lastPos, (List.concat [lastToken, (ch::nil)])) ((currentPos + 1), x)); 
+
+fun SplitByDelimiters f &quot;&quot; = []
+  | SplitByDelimiters f s = map (fn (pos, token) =&gt; (pos, (String.implode token))) (SplitByDelimitersLeft f (0, []) (0, (String.explode s)))
+
+fun isNotNonOperatorDelimiter s &quot;&quot; = false
+  | isNotNonOperatorDelimiter s delimiters = case String.tokens (fn c =&gt; Char.contains delimiters c) s
+                                               of [] =&gt; false
+                                                | _ =&gt; true;
+
+fun SplitBySpecialTokens statement = SplitByDelimiters (fn c =&gt; Char.contains &quot; ,=&lt;&gt;~()&quot; c) statement;
+
+fun SplitTokens statement = List.filter (fn (pos, token) =&gt; isNotNonOperatorDelimiter token &quot; ,&quot;) (SplitBySpecialTokens statement);
+
+fun Tokenize statement = map (fn (pos, token) =&gt; (pos, ParseToken token)) (SplitTokens statement);
+
+(*SELECT col1 FROM table WHERE ;*)
+(*INSERT INTO table(col1, col2) VALUES 1, &apos;2&apos;;*)
+(*UPDATE table SET col1=a WHERE ;*)
+(*DELETE FROM table WHERE ;*)
+
+datatype &apos;a ParseState = ParseError of int * string
+                       | Result of &apos;a
+
+infixr 9 &gt;&gt;= 
+fun a &gt;&gt;= f = case a
+                of (ParseError (columnNo, msg)) =&gt; ParseError (columnNo, msg)
+                 | (Result result) =&gt; f result;
+
+fun return a = Result a;
+
+datatype ColNameList = All
+                     | Columns of (string list);
+
+fun ParseColNameList ((_, (TIdentifier col))::rest) = (ParseColNameList rest)
+                                                  &gt;&gt;= (fn (Columns cols, rest) =&gt; return (Columns (col::cols), rest))
+  | ParseColNameList tokens = return (Columns [], tokens);
+
+fun ParseSelectColNameList ((_, TOperatorStar)::rest) = return (All, rest)
+  | ParseSelectColNameList ((columnNo, (TIdentifier col))::rest) = ParseColNameList ((columnNo, TIdentifier col)::rest)
+  | ParseSelectColNameList ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected columns&quot;)
+  | ParseSelectColNameList [] = ParseError (~1, &quot;Expected columns&quot;);
+
+fun ParseTable ((_, TFrom)::(_, TIdentifier tableName)::rest) = return (tableName, rest)
+  | ParseTable ((_, TFrom)::(columnNo, _)::rest) = ParseError (columnNo, &quot;Expected table name&quot;)
+  | ParseTable ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected keyword FROM&quot;)
+  | ParseTable [] = ParseError (~1, &quot;Expected keyword FROM&quot;);
+
+
+datatype Value = Int of int
+               | Real of real
+               | String of string
+               | Identifier of string;
+
+datatype Expr = Equal of Value * Value
+              | Greater of Value * Value
+              | Less of Value * Value
+              | NotEqual of Value * Value;
+
+datatype WhereCondition = NoCondition
+                        | Single of Expr
+                        | And of WhereCondition * WhereCondition
+                        | Or of WhereCondition * WhereCondition;
+
+
+fun ParseValue [] = ParseError (~1, &quot;Expected value or identifier.&quot;)
+  | ParseValue (token::rest) = 
+    case token
+      of (_, (TInt value))        =&gt; return (Int value, rest)
+       | (_, (TReal value))       =&gt; return (Real value, rest)
+       | (_, (TString value))     =&gt; return (String value, rest)
+       | (_, (TIdentifier value)) =&gt; return (Identifier value, rest)
+       | (columnNo, _)              =&gt; ParseError (columnNo, &quot;Expected value or identifier.&quot;);
+
+fun ParseExpr tokens = (ParseValue tokens)
+                   &gt;&gt;= (fn (rvalue, rest) =&gt;
+        (case rest
+           of ((_, TEqual)::rest)    =&gt; (ParseValue rest) &gt;&gt;= (fn (lvalue, rest) =&gt; return (Equal (rvalue, lvalue), rest)) 
+            | ((_, TGreater)::rest)  =&gt; (ParseValue rest) &gt;&gt;= (fn (lvalue, rest) =&gt; return (Greater (rvalue, lvalue), rest))
+            | ((_, TLess)::rest)     =&gt; (ParseValue rest) &gt;&gt;= (fn (lvalue, rest) =&gt; return (Less (rvalue, lvalue), rest))
+            | ((_, TNotEqual)::rest) =&gt; (ParseValue rest) &gt;&gt;= (fn (lvalue, rest) =&gt; return (NotEqual (rvalue, lvalue), rest))
+            | ((columnNo, _)::rest) =&gt; ParseError (columnNo, &quot;Expected operator&quot;)
+            | [] =&gt; ParseError (~1, &quot;Expected operator&quot;)));
+
+fun ParseWhereNextCondition ParseWhereConditions (expr, []) = return (expr, [])
+  | ParseWhereNextCondition ParseWhereConditions (expr, (token::rest)) = 
+    case token
+        of (_, TAnd) =&gt; (ParseWhereConditions rest) &gt;&gt;= (fn (condition, rest) =&gt; return (And (expr, condition), rest))
+         | (_, TOr) =&gt; (ParseWhereConditions rest) &gt;&gt;= (fn (condition, rest) =&gt; return (Or (expr, condition), rest))
+         | _ =&gt; return (expr, (token::rest));
+
+fun ParseWhereConditions ((_, TOpeningParanthesis)::tokens) = (ParseWhereConditions tokens) &gt;&gt;= (fn (condition, rest) =&gt;
+    case rest
+      of [] =&gt; ParseError (~1, &quot;Expected closing paranthesis&quot;)
+       | ((_, TClosingParanthesis)::[]) =&gt; return (condition, [])
+       | ((_, TClosingParanthesis)::rest) =&gt; (ParseWhereNextCondition ParseWhereConditions (condition, rest))
+       | ((columnNo, _)::_) =&gt; ParseError (columnNo, &quot;Expected closing paranthesis&quot;)
+   )
+  | ParseWhereConditions tokens = (ParseExpr tokens) &gt;&gt;= (fn (expr, tokens) =&gt; (ParseWhereNextCondition ParseWhereConditions) (Single expr, tokens));
+
+fun ParseWhere ((_, TWhere)::tokens) = ParseWhereConditions tokens
+  | ParseWhere [] = Result (NoCondition, [])
+  | ParseWhere ((columnNo, _)::_) = ParseError (columnNo, &quot;Expected WHERE keyword.&quot;)
+
+fun ParseSelectFromTokens ((columnNo, TSelect)::tokens) = (ParseSelectColNameList tokens)
+                                                    &gt;&gt;= (fn (colList, rest) =&gt; (ParseTable rest)
+                                                    &gt;&gt;= (fn (tableName, rest) =&gt; (ParseWhere rest)
+                                                    &gt;&gt;= (fn (conditions, rest) =&gt; return (colList, tableName, conditions))))
+  | ParseSelectFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected SELECT keyword.&quot;)
+  | ParseSelectFromTokens [] = ParseError (~1, &quot;Expected SELECT keyword.&quot;);
+
+
+fun ParseDeleteFromTokens ((columnNo, TDelete)::tokens) = (ParseTable tokens)
+                                                    &gt;&gt;= (fn (tableName, rest) =&gt; (ParseWhere rest)
+                                                    &gt;&gt;= (fn (conditions, rest) =&gt; return (tableName, conditions)))
+  | ParseDeleteFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected DELETE keyword.&quot;)
+  | ParseDeleteFromTokens [] = ParseError (~1, &quot;Expected DELETE keyword.&quot;);
+
+
+fun ParseSingleValue [] = ParseError (~1, &quot;Expected a constant value.&quot;)
+  | ParseSingleValue (token::rest) = 
+    case token
+      of (_, (TInt value))        =&gt; return (Int value, rest)
+       | (_, (TReal value))       =&gt; return (Real value, rest)
+       | (_, (TString value))     =&gt; return (String value, rest)
+       | (columnNo, _)              =&gt; ParseError (columnNo, &quot;Expected a constant value.&quot;)
+
+fun ParseValues tokens = (ParseSingleValue tokens)
+                         &gt;&gt;= (fn (col, rest) =&gt; case rest of [] =&gt; return (col::nil, rest) | _ =&gt; (ParseValues rest)
+                         &gt;&gt;= (fn (cols, rest) =&gt; return (col::cols, rest)));
+
+fun ParseInsertValues ((_, TValues)::rest) = (ParseValues rest)
+  | ParseInsertValues ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected VALUES keyword.&quot;)
+  | ParseInsertValues [] = ParseError (~1, &quot;Expected VALUES keyword.&quot;);
+
+fun ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(_, TIdentifier tableName)::tokens) = (ParseInsertValues tokens)
+                                                    &gt;&gt;= (fn (conditions, rest) =&gt; return (tableName, conditions))
+  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected table name.&quot;)
+  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::[]) = ParseError (~1, &quot;Expected table name.&quot;)
+  | ParseInsertFromTokens ((_, TInsert)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INTO keyword.&quot;)
+  | ParseInsertFromTokens ((_, TInsert)::[]) = ParseError (~1, &quot;Expected INTO keyword.&quot;)
+  | ParseInsertFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INSERT keyword.&quot;)
+  | ParseInsertFromTokens [] = ParseError (~1, &quot;Expected INSERT keyword.&quot;);
+
+(*
+fun ParseQueryFromTokens (head::tokens) = case head
+                                          of TSelect =&gt; (ParseSelectFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (cols, tableName, whereConditions) =&gt; return (Select cols, tableName, whereConditions))
+                                           | TUpdate =&gt; (ParseUpdateFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, sets) =&gt; return (Update tableName, sets))
+                                           | TInsert =&gt; (ParseInsertFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, values) =&gt; return (Insert tableName, values))
+                                           | TDelete =&gt; (ParseDeleteFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, whereConditions) =&gt; return (Delete tableName, whereConditions));
+*)</layout>
+        </ml>
+      </block>
       <block id="ID1412472179">
         <id>DB colset types</id>
         <color id="ID1412452279">
@@ -627,7 +1147,7 @@ Queue</text>
                   filled="false"/>
         <lineattr colour="Black"
                   thick="1"
-                  type="Solid"/>
+                  type="solid"/>
         <textattr colour="Black"
                   bold="false"/>
         <text>Submit
@@ -702,7 +1222,7 @@ Query</text>
                   filled="false"/>
         <lineattr colour="Black"
                   thick="1"
-                  type="Solid"/>
+                  type="solid"/>
         <textattr colour="Black"
                   bold="false"/>
         <text>Process
@@ -778,7 +1298,7 @@ Result</text>
                   filled="false"/>
         <lineattr colour="Black"
                   thick="1"
-                  type="Solid"/>
+                  type="solid"/>
         <textattr colour="Black"
                   bold="false"/>
         <text>Compute
@@ -854,7 +1374,7 @@ Query</text>
                   filled="false"/>
         <lineattr colour="Black"
                   thick="1"
-                  type="Solid"/>
+                  type="solid"/>
         <textattr colour="Black"
                   bold="false"/>
         <text>Execute
@@ -1604,7 +2124,7 @@ Results</text>
                   filled="false"/>
         <lineattr colour="Black"
                   thick="1"
-                  type="Solid"/>
+                  type="solid"/>
         <textattr colour="Black"
                   bold="false"/>
         <text>Execute
@@ -2046,8 +2566,8 @@ Queries</text>
     </options>
     <binders>
       <cpnbinder id="ID1412538433"
-                 x="655"
-                 y="193"
+                 x="1005"
+                 y="197"
                  width="1129"
                  height="617">
         <sheets>
@@ -2061,8 +2581,8 @@ Queries</text>
             </zorder>
           </cpnsheet>
           <cpnsheet id="ID1412590208"
-                    panx="-58.000000"
-                    pany="225.000000"
+                    panx="-33.000000"
+                    pany="178.000000"
                     zoom="1.000000"
                     instance="ID1412589339">
             <zorder>
@@ -2160,6 +2680,9 @@ Queries</text>
           <IndexNode expanded="false"/>
           <IndexNode expanded="true"/>
         </IndexNode>
+        <IndexNode expanded="true">
+          <IndexNode expanded="false"/>
+        </IndexNode>
         <IndexNode expanded="false">
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
@@ -2175,7 +2698,7 @@ Queries</text>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
         </IndexNode>
-        <IndexNode expanded="true">
+        <IndexNode expanded="false">
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
