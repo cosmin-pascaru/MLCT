@@ -679,34 +679,6 @@ fun ParseQueryFromTokens (head::tokens) = case head
       </block>
       <block id="ID1412478992">
         <id>Query colset types</id>
-        <color id="ID1412458213">
-          <id>Operator</id>
-          <alias>
-            <id>STRING</id>
-          </alias>
-          <layout>colset Operator = STRING; (*might be deleted*)</layout>
-        </color>
-        <color id="ID1412458800">
-          <id>Operand</id>
-          <alias>
-            <id>STRING</id>
-          </alias>
-          <layout>colset Operand = STRING; (*might be deleted*)</layout>
-        </color>
-        <color id="ID1412457469">
-          <id>OperatorList</id>
-          <list>
-            <id>Operator</id>
-          </list>
-          <layout>colset OperatorList = list Operator; (*might be deleted*)</layout>
-        </color>
-        <color id="ID1412457835">
-          <id>OperandList</id>
-          <list>
-            <id>Operand</id>
-          </list>
-          <layout>colset OperandList = list Operand; (*might be deleted*)</layout>
-        </color>
         <color id="ID1412469917">
           <id>CQueryString</id>
           <alias>
@@ -785,26 +757,6 @@ fun ParseQueryFromTokens (head::tokens) = case head
           </list>
           <layout>colset CInternalQueryQueue = list CInternalQuery;</layout>
         </color>
-        <ml id="ID1412465354">datatype WhereConditions = 
-     FinalCondition of Operand * Operator * Operand
-   | OR of WhereConditions * WhereConditions
-   | AND of WhereConditions * WhereConditions;
-          <layout>datatype WhereConditions = 
-     FinalCondition of Operand * Operator * Operand
-   | OR of WhereConditions * WhereConditions
-   | AND of WhereConditions * WhereConditions;</layout>
-        </ml>
-        <ml id="ID1412465285">datatype InternalQuery = 
-     SelectQuery of CTableName * CColNameList * WhereConditions
-   | InsertQuery of CTableName * CColNameList * CRow
-   | UpdateQuery of CTableName * CAssignmentList * WhereConditions
-   | DeleteQuery of CTableName * WhereConditions;
-          <layout>datatype InternalQuery = 
-     SelectQuery of CTableName * CColNameList * WhereConditions
-   | InsertQuery of CTableName * CColNameList * CRow
-   | UpdateQuery of CTableName * CAssignmentList * WhereConditions
-   | DeleteQuery of CTableName * WhereConditions;</layout>
-        </ml>
       </block>
       <block id="ID1412476042">
         <id>DB vars</id>
@@ -2418,7 +2370,7 @@ Queries</text>
                   filled="false"/>
         <lineattr colour="Black"
                   thick="1"
-                  type="Solid"/>
+                  type="solid"/>
         <textattr colour="Black"
                   bold="false"/>
         <text>Update
@@ -2494,7 +2446,7 @@ Results</text>
                   filled="false"/>
         <lineattr colour="Black"
                   thick="1"
-                  type="Solid"/>
+                  type="solid"/>
         <textattr colour="Black"
                   bold="false"/>
         <text>Execute
@@ -3160,7 +3112,7 @@ Set</text>
                   filled="false"/>
         <lineattr colour="Black"
                   thick="1"
-                  type="Solid"/>
+                  type="solid"/>
         <textattr colour="Black"
                   bold="false"/>
         <text>Execute
@@ -3639,9 +3591,9 @@ Queries</text>
           </cpnsheet>
         </sheets>
         <zorder>
-          <position value="0"/>
           <position value="2"/>
           <position value="1"/>
+          <position value="0"/>
         </zorder>
       </cpnbinder>
     </binders>
@@ -3757,12 +3709,6 @@ Queries</text>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="false"/>
           <IndexNode expanded="true"/>
         </IndexNode>
         <IndexNode expanded="true">
