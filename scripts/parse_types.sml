@@ -245,14 +245,19 @@ fun ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(_, TIdentifier tableName):
   | ParseInsertFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, "Expected INSERT keyword.")
   | ParseInsertFromTokens [] = ParseError (~1, "Expected INSERT keyword.");
 
-(*
-fun ParseQueryFromTokens (head::tokens) = case head
-                                          of TSelect => (ParseSelectFromTokens (head::tokens))
-                                                    >>= (fn (cols, tableName, whereConditions) => return (Select cols, tableName, whereConditions))
-                                           | TUpdate => (ParseUpdateFromTokens (head::tokens))
-                                                    >>= (fn (tableName, sets) => return (Update tableName, sets))
-                                           | TInsert => (ParseInsertFromTokens (head::tokens))
-                                                    >>= (fn (tableName, values) => return (Insert tableName, values))
-                                           | TDelete => (ParseDeleteFromTokens (head::tokens))
-                                                    >>= (fn (tableName, whereConditions) => return (Delete tableName, whereConditions));
-*)
+
+datatype InternalQuery = Select of ColNameList * string * WhereCondition
+                       | Insert of string * (Value list)
+                       | Delete of string * WhereCondition;
+
+fun ParseQueryFromTokens [] = ParseError (~1, "Expected primary expression - SELECT, DELETE, INSERT.")
+  | ParseQueryFromTokens (head::tokens) = case head
+                                          of (_, TSelect) => (ParseSelectFromTokens (head::tokens))
+                                                    >>= (fn (cols, tableName, whereConditions) => return (Select (cols, tableName, whereConditions)))
+(*                                           | (_, TUpdate) => (ParseUpdateFromTokens (head::tokens))
+                                                    >>= (fn (tableName, sets) => return (Update (tableName, sets)))*)
+                                           | (_, TInsert) => (ParseInsertFromTokens (head::tokens))
+                                                    >>= (fn (tableName, values) => return (Insert (tableName, values)))
+                                           | (_, TDelete) => (ParseDeleteFromTokens (head::tokens))
+                                                    >>= (fn (tableName, whereConditions) => return (Delete (tableName, whereConditions)))
+                                           | (columnNo, _) => ParseError (columnNo, "Expected primary expression - SELECT, DELETE, INSERT.");
