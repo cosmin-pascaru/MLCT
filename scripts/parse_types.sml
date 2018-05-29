@@ -123,13 +123,14 @@ fun Tokenize statement = map (fn (pos, token) => (pos, ParseToken token)) (Split
 (*DELETE FROM table WHERE ;*)
 
 datatype 'a ParseState = ParseError of int * string
+                       | RuntimeException of string
                        | Result of 'a
 
 infixr 9 >>= 
 fun a >>= f = case a
                 of (ParseError (columnNo, msg)) => ParseError (columnNo, msg)
+                 | (RuntimeException msg) => RuntimeException msg
                  | (Result result) => f result;
-
 fun return a = Result a;
 
 datatype ColNameList = All
@@ -262,5 +263,69 @@ fun ParseQueryFromTokens [] = ParseError (~1, "Expected primary expression - SEL
                                                     >>= (fn (tableName, whereConditions) => return (Delete (tableName, whereConditions)))
                                            | (columnNo, _) => ParseError (columnNo, "Expected primary expression - SELECT, DELETE, INSERT.");
 
-fun IsReadQuery query = true; (*TODO: implement VALI!!!*)
-										   
+fun IsEqual (Int x1) (Int x2) = return (x1 = x2)
+  | IsEqual (Real x1) (Real x2) = return ((Real.abs (x1 - x2)) < 0.0001)
+  | IsEqual (String x1) (String x2) = return (x1 = x2)
+  | IsEqual _ _ = RuntimeException "Could not compare types.";
+
+fun IsGreater (Int x1) (Int x2) = return (x1 > x2)
+  | IsGreater (Real x1) (Real x2) = return (x1 > x2)
+  | IsGreater (String x1) (String x2) = return (x1 > x2)
+  | IsGreater _ _ = RuntimeException "Could not compare types.";
+
+fun IsLess (Int x1) (Int x2) = return (x1 < x2)
+  | IsLess (Real x1) (Real x2) = return (x1 < x2)
+  | IsLess (String x1) (String x2) = return (x1 < x2)
+  | IsLess _ _ = RuntimeException "Could not compare types.";
+
+fun IsNotEqual (Int x1) (Int x2) = return (x1 <> x2)
+  | IsNotEqual (Real x1) (Real x2) = return ((Real.abs (x1 - x2)) > 0.0001)
+  | IsNotEqual (String x1) (String x2) = return (x1 <> x2)
+  | IsNotEqual _ _ = RuntimeException "Could not compare types.";
+
+fun CastValue colType value = return (String value);
+
+fun GetActualValue _ [] [] = RuntimeException "Column not found"
+  | GetActualValue _ _ [] = RuntimeException "DB integrity error: more columns than values"
+  | GetActualValue _ [] _ = RuntimeException "DB integrity error: more values than columns"
+  | GetActualValue (Identifier varName) ((colType, colName)::restColSpecs) (rowHead::rest) = 
+    (if colName = varName
+     then (CastValue colType rowHead)
+     else (GetActualValue (Identifier varName) restColSpecs rest))
+  | GetActualValue variable dbColSpecsRows rows = return variable;
+
+fun EvaluateExprAgainstRow (Equal (value1, value2)) dbColSpecs row = (GetActualValue value1 dbColSpecs row)
+                                                                >>= (fn leftValue => (GetActualValue value2 dbColSpecs row)
+                                                                >>= (fn rightValue => (IsEqual leftValue rightValue)))
+  | EvaluateExprAgainstRow (Greater (value1, value2)) dbColSpecs row = (GetActualValue value1 dbColSpecs row)
+                                                                  >>= (fn leftValue => (GetActualValue value2 dbColSpecs row)
+                                                                  >>= (fn rightValue => (IsGreater leftValue rightValue)))
+  | EvaluateExprAgainstRow (Less (value1, value2)) dbColSpecs row = (GetActualValue value1 dbColSpecs row)
+                                                               >>= (fn leftValue => (GetActualValue value2 dbColSpecs row)
+                                                               >>= (fn rightValue => (IsLess leftValue rightValue)))
+  | EvaluateExprAgainstRow (NotEqual (value1, value2)) dbColSpecs row = (GetActualValue value1 dbColSpecs row)
+                                                                   >>= (fn leftValue => (GetActualValue value2 dbColSpecs row)
+                                                                   >>= (fn rightValue => (IsNotEqual leftValue rightValue)));
+
+fun ShouldSelectRow _  _ [] = RuntimeException "Table must not be void."
+  | ShouldSelectRow NoCondition _ _ = return true
+  | ShouldSelectRow (Single expr) dbColSpecs row = (EvaluateExprAgainstRow expr dbColSpecs row)
+  | ShouldSelectRow (And (expr1, expr2)) dbColSpecs row = (ShouldSelectRow expr1 dbColSpecs row)
+                                           >>= (fn (leftIsTrue) => (ShouldSelectRow expr2 dbColSpecs row)
+                                           >>= (fn (rightIsTrue) => return (leftIsTrue andalso rightIsTrue)))
+  | ShouldSelectRow (Or (expr1, expr2)) dbColSpecs row = (ShouldSelectRow expr1 dbColSpecs row)
+                                           >>= (fn (leftIsTrue) => (ShouldSelectRow expr2 dbColSpecs row)
+                                           >>= (fn (rightIsTrue) => return (leftIsTrue orelse rightIsTrue)));
+
+fun ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
+  | ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
+          (ShouldSelectRow whereConditions dbColSpecs row)
+      >>= (fn (shouldSelectRow) => (ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
+      >>= (fn (rows) => (if shouldSelectRow
+                         then return (row::rows)
+                         else return (rows))))
+  | ExecuteSelect _ _ = RuntimeException "Invalid query or table."
+
+fun IsReadQuery query = case Tokenize query
+                          of ((_, TSelect)::rest) => true
+                           | _ => false;
