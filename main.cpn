@@ -304,17 +304,24 @@ fun ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(_, TIdentifier tableName):
   | ParseInsertFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INSERT keyword.&quot;)
   | ParseInsertFromTokens [] = ParseError (~1, &quot;Expected INSERT keyword.&quot;);
 
-(*
-fun ParseQueryFromTokens (head::tokens) = case head
-                                          of TSelect =&gt; (ParseSelectFromTokens (head::tokens))
-                                                    &gt;&gt;= (fn (cols, tableName, whereConditions) =&gt; return (Select cols, tableName, whereConditions))
-                                           | TUpdate =&gt; (ParseUpdateFromTokens (head::tokens))
-                                                    &gt;&gt;= (fn (tableName, sets) =&gt; return (Update tableName, sets))
-                                           | TInsert =&gt; (ParseInsertFromTokens (head::tokens))
-                                                    &gt;&gt;= (fn (tableName, values) =&gt; return (Insert tableName, values))
-                                           | TDelete =&gt; (ParseDeleteFromTokens (head::tokens))
-                                                    &gt;&gt;= (fn (tableName, whereConditions) =&gt; return (Delete tableName, whereConditions));
-*)
+
+datatype InternalQuery = Select of ColNameList * string * WhereCondition
+                       | Insert of string * (Value list)
+                       | Delete of string * WhereCondition;
+
+fun ParseQueryFromTokens [] = ParseError (~1, &quot;Expected primary expression - SELECT, DELETE, INSERT.&quot;)
+  | ParseQueryFromTokens (head::tokens) = case head
+                                          of (_, TSelect) =&gt; (ParseSelectFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (cols, tableName, whereConditions) =&gt; return (Select (cols, tableName, whereConditions)))
+(*                                           | (_, TUpdate) =&gt; (ParseUpdateFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, sets) =&gt; return (Update (tableName, sets)))*)
+                                           | (_, TInsert) =&gt; (ParseInsertFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, values) =&gt; return (Insert (tableName, values)))
+                                           | (_, TDelete) =&gt; (ParseDeleteFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, whereConditions) =&gt; return (Delete (tableName, whereConditions)))
+                                           | (columnNo, _) =&gt; ParseError (columnNo, &quot;Expected primary expression - SELECT, DELETE, INSERT.&quot;);
+
+fun IsReadQuery query = true; (*TODO: implement VALI!!!*)
           <layout>datatype Token = TSelect
                | TInsert
                | TUpdate
@@ -562,17 +569,24 @@ fun ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(_, TIdentifier tableName):
   | ParseInsertFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INSERT keyword.&quot;)
   | ParseInsertFromTokens [] = ParseError (~1, &quot;Expected INSERT keyword.&quot;);
 
-(*
-fun ParseQueryFromTokens (head::tokens) = case head
-                                          of TSelect =&gt; (ParseSelectFromTokens (head::tokens))
-                                                    &gt;&gt;= (fn (cols, tableName, whereConditions) =&gt; return (Select cols, tableName, whereConditions))
-                                           | TUpdate =&gt; (ParseUpdateFromTokens (head::tokens))
-                                                    &gt;&gt;= (fn (tableName, sets) =&gt; return (Update tableName, sets))
-                                           | TInsert =&gt; (ParseInsertFromTokens (head::tokens))
-                                                    &gt;&gt;= (fn (tableName, values) =&gt; return (Insert tableName, values))
-                                           | TDelete =&gt; (ParseDeleteFromTokens (head::tokens))
-                                                    &gt;&gt;= (fn (tableName, whereConditions) =&gt; return (Delete tableName, whereConditions));
-*)</layout>
+
+datatype InternalQuery = Select of ColNameList * string * WhereCondition
+                       | Insert of string * (Value list)
+                       | Delete of string * WhereCondition;
+
+fun ParseQueryFromTokens [] = ParseError (~1, &quot;Expected primary expression - SELECT, DELETE, INSERT.&quot;)
+  | ParseQueryFromTokens (head::tokens) = case head
+                                          of (_, TSelect) =&gt; (ParseSelectFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (cols, tableName, whereConditions) =&gt; return (Select (cols, tableName, whereConditions)))
+(*                                           | (_, TUpdate) =&gt; (ParseUpdateFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, sets) =&gt; return (Update (tableName, sets)))*)
+                                           | (_, TInsert) =&gt; (ParseInsertFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, values) =&gt; return (Insert (tableName, values)))
+                                           | (_, TDelete) =&gt; (ParseDeleteFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, whereConditions) =&gt; return (Delete (tableName, whereConditions)))
+                                           | (columnNo, _) =&gt; ParseError (columnNo, &quot;Expected primary expression - SELECT, DELETE, INSERT.&quot;);
+
+fun IsReadQuery query = true; (*TODO: implement VALI!!!*)</layout>
         </ml>
       </block>
       <block id="ID1412472179">
@@ -3557,8 +3571,8 @@ Queries</text>
     </options>
     <binders>
       <cpnbinder id="ID1412538433"
-                 x="725"
-                 y="145"
+                 x="932"
+                 y="118"
                  width="1129"
                  height="617">
         <sheets>
@@ -3682,7 +3696,7 @@ Queries</text>
           <IndexNode expanded="true"/>
         </IndexNode>
         <IndexNode expanded="true">
-          <IndexNode expanded="false"/>
+          <IndexNode expanded="true"/>
         </IndexNode>
         <IndexNode expanded="false">
           <IndexNode expanded="true"/>
@@ -3699,7 +3713,7 @@ Queries</text>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
         </IndexNode>
-        <IndexNode expanded="true">
+        <IndexNode expanded="false">
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>

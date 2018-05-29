@@ -261,3 +261,6 @@ fun ParseQueryFromTokens [] = ParseError (~1, "Expected primary expression - SEL
                                            | (_, TDelete) => (ParseDeleteFromTokens (head::tokens))
                                                     >>= (fn (tableName, whereConditions) => return (Delete (tableName, whereConditions)))
                                            | (columnNo, _) => ParseError (columnNo, "Expected primary expression - SELECT, DELETE, INSERT.");
+
+fun IsReadQuery query = true; (*TODO: implement VALI!!!*)
+										   
