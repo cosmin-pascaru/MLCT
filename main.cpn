@@ -967,11 +967,11 @@ List.concat [(if currIdx mod wrkCnt = wrkIdx then [h] else []), GetWorkerData(ta
   | GetWorkerData(h::tail, currIdx, wrkIdx, wrkCnt) = 
 List.concat [(if currIdx mod wrkCnt = wrkIdx then [h] else []), GetWorkerData(tail, currIdx + 1, wrkIdx, wrkCnt)]</layout>
         </ml>
-        <ml id="ID1412714731">fun ExecuteQuery(query : CInternalQuery) : CUserQueryResult = (0, (0, [])); (*temporary*);
-          <layout>fun ExecuteQuery(query : CInternalQuery) : CUserQueryResult = (0, (0, [])); (*temporary*);</layout>
+        <ml id="ID1412714731">fun ExecuteQuery(query : CInternalQuery, db : CDatabase) : CUserQueryResult = (0, (0, []))
+          <layout>fun ExecuteQuery(query : CInternalQuery, db : CDatabase) : CUserQueryResult = (0, (0, []))</layout>
         </ml>
-        <ml id="ID1412845715">fun ExecuteQueries(queries, db) = [];
-          <layout>fun ExecuteQueries(queries, db) = [];</layout>
+        <ml id="ID1412845715">fun ExecuteQueries(queries, db) = map (fn q =&gt; ExecuteQuery(q, db)) queries;
+          <layout>fun ExecuteQueries(queries, db) = map (fn q =&gt; ExecuteQuery(q, db)) queries;</layout>
         </ml>
       </block>
     </globbox>
@@ -4846,8 +4846,8 @@ remWorkers = 0</text>
     </options>
     <binders>
       <cpnbinder id="ID1412538433"
-                 x="932"
-                 y="118"
+                 x="923"
+                 y="120"
                  width="1129"
                  height="617">
         <sheets>
@@ -4880,8 +4880,8 @@ remWorkers = 0</text>
           </cpnsheet>
         </sheets>
         <zorder>
-          <position value="0"/>
           <position value="1"/>
+          <position value="0"/>
           <position value="2"/>
         </zorder>
       </cpnbinder>
