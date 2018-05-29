@@ -326,5 +326,6 @@ fun ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, d
                          else return (rows))))
   | ExecuteSelect _ _ = RuntimeException "Invalid query or table."
 
-fun IsReadQuery query = true;
-
+fun IsReadQuery query = case Tokenize query
+                          of ((_, TSelect)::rest) => true
+                           | _ => false;
