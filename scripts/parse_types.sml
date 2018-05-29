@@ -325,3 +325,6 @@ fun ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, d
                          then return (row::rows)
                          else return (rows))))
   | ExecuteSelect _ _ = RuntimeException "Invalid query or table."
+
+fun IsReadQuery query = true;
+
