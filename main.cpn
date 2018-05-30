@@ -79,7 +79,12 @@
                | TInvalid of string
                | TOpeningParanthesis
                | TClosingParanthesis
-               | TOperatorStar;
+               | TOperatorStar
+               | TTable
+               | TCreate
+               | TTypeInt
+               | TTypeReal
+               | TTypeString;
 
 fun ParseIntLeft value [] = (SOME value)
   | ParseIntLeft leftVal (ch::x) = if (Char.isDigit ch)
@@ -150,7 +155,12 @@ fun ParseToken tokenStr = case lower tokenStr
                              | &quot;into&quot;   =&gt; TInto
                              | &quot;from&quot;   =&gt; TFrom
                              | &quot;values&quot; =&gt; TValues
+                             | &quot;table&quot;  =&gt; TTable
+                             | &quot;create&quot; =&gt; TCreate
                              | &quot;set&quot;    =&gt; TSet
+                             | &quot;int&quot;    =&gt; TTypeInt
+                             | &quot;real&quot;   =&gt; TTypeReal
+                             | &quot;string&quot; =&gt; TTypeString
                              | &quot;*&quot;      =&gt; TOperatorStar
                              | value    =&gt; ParseDynamic tokenStr
 
@@ -293,22 +303,58 @@ fun ParseValues tokens = (ParseSingleValue tokens)
                          &gt;&gt;= (fn (cols, rest) =&gt; return (col::cols, rest)));
 
 fun ParseInsertValues ((_, TValues)::rest) = (ParseValues rest)
-  | ParseInsertValues ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected VALUES keyword.&quot;)
-  | ParseInsertValues [] = ParseError (~1, &quot;Expected VALUES keyword.&quot;);
+  | ParseInsertValues ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected VALUES keyword&quot;)
+  | ParseInsertValues [] = ParseError (~1, &quot;Expected VALUES keyword&quot;);
 
 fun ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(_, TIdentifier tableName)::tokens) = (ParseInsertValues tokens)
                                                     &gt;&gt;= (fn (conditions, rest) =&gt; return (tableName, conditions))
-  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected table name.&quot;)
-  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::[]) = ParseError (~1, &quot;Expected table name.&quot;)
-  | ParseInsertFromTokens ((_, TInsert)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INTO keyword.&quot;)
-  | ParseInsertFromTokens ((_, TInsert)::[]) = ParseError (~1, &quot;Expected INTO keyword.&quot;)
-  | ParseInsertFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INSERT keyword.&quot;)
-  | ParseInsertFromTokens [] = ParseError (~1, &quot;Expected INSERT keyword.&quot;);
+  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected table name&quot;)
+  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::[]) = ParseError (~1, &quot;Expected table name&quot;)
+  | ParseInsertFromTokens ((_, TInsert)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INTO keyword&quot;)
+  | ParseInsertFromTokens ((_, TInsert)::[]) = ParseError (~1, &quot;Expected INTO keyword&quot;)
+  | ParseInsertFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INSERT keyword&quot;)
+  | ParseInsertFromTokens [] = ParseError (~1, &quot;Expected INSERT keyword&quot;);
 
+datatype InternalColSpec = ColInt of string
+                         | ColReal of string
+                         | ColString of string;
+
+fun ParseColSpec ((_, TIdentifier varName)::(_, TTypeInt)::rest) = return (ColInt varName, rest)
+  | ParseColSpec ((_, TIdentifier varName)::(_, TTypeReal)::rest) = return (ColReal varName, rest)
+  | ParseColSpec ((_, TIdentifier varName)::(_, TTypeString)::rest) = return (ColString varName, rest)
+  | ParseColSpec ((_, TIdentifier varName)::(columnNo, _)::rest) = ParseError (columnNo, &quot;Expected type&quot;)
+  | ParseColSpec ((_, TIdentifier varName)::[]) = ParseError (~1, &quot;Expected type&quot;)
+  | ParseColSpec ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected identifier&quot;)
+  | ParseColSpec [] = ParseError (~1, &quot;Expected identifier&quot;);
+
+fun ParseColSpecs tokens = (ParseColSpec tokens)
+                       &gt;&gt;= (fn (colSpec, rest) =&gt;
+                        (case rest
+                           of ((columnNo, TClosingParanthesis)::rest) =&gt; return (colSpec::nil, (columnNo, TClosingParanthesis)::rest)
+                            | _ =&gt; (ParseColSpecs rest)
+                               &gt;&gt;= (fn (colSpecs, rest) =&gt; return (colSpec::colSpecs, rest))));
+
+fun ParseCreateTableColSpecs ((_, TOpeningParanthesis)::rest) = (ParseColSpecs rest) &gt;&gt;= (fn (cols, rest) =&gt; 
+      (case rest
+         of ((_, TClosingParanthesis)::rest) =&gt; return (cols, rest)
+          | ((columnNo, _)::rest) =&gt; ParseError (columnNo, &quot;Expected closing paranthesis&quot;)
+          | [] =&gt; ParseError (~1, &quot;Expected closing paranthesis&quot;)))
+  | ParseCreateTableColSpecs ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected opening paranthesis for columns&quot;)
+  | ParseCreateTableColSpecs [] = ParseError (~1, &quot;Expected opening paranthesis for columns&quot;);
+
+fun ParseCreateTableFromTokens ((_, TCreate)::(_, TTable)::(_, TIdentifier tableName)::tokens) = (ParseCreateTableColSpecs tokens)
+                                                    &gt;&gt;= (fn (conditions, rest) =&gt; return (tableName, conditions))
+  | ParseCreateTableFromTokens ((_, TCreate)::(_, TTable)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected table name&quot;)
+  | ParseCreateTableFromTokens ((_, TCreate)::(_, TTable)::[]) = ParseError (~1, &quot;Expected table name&quot;)
+  | ParseCreateTableFromTokens ((_, TCreate)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected TABLE keyword&quot;)
+  | ParseCreateTableFromTokens ((_, TCreate)::[]) = ParseError (~1, &quot;Expected TABLE keyword&quot;)
+  | ParseCreateTableFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected CREATE keyword&quot;)
+  | ParseCreateTableFromTokens [] = ParseError (~1, &quot;Expected CREATE keyword&quot;);
 
 datatype InternalQuery = Select of ColNameList * string * WhereCondition
                        | Insert of string * (Value list)
-                       | Delete of string * WhereCondition;
+                       | Delete of string * WhereCondition
+                       | CreateTable of string * (InternalColSpec list)
 
 fun ParseQueryFromTokens [] = ParseError (~1, &quot;Expected primary expression - SELECT, DELETE, INSERT.&quot;)
   | ParseQueryFromTokens (head::tokens) = case head
@@ -320,6 +366,8 @@ fun ParseQueryFromTokens [] = ParseError (~1, &quot;Expected primary expression 
                                                     &gt;&gt;= (fn (tableName, values) =&gt; return (Insert (tableName, values)))
                                            | (_, TDelete) =&gt; (ParseDeleteFromTokens (head::tokens))
                                                     &gt;&gt;= (fn (tableName, whereConditions) =&gt; return (Delete (tableName, whereConditions)))
+                                           | (_, TCreate) =&gt; (ParseCreateTableFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, colSpecs) =&gt; return (CreateTable (tableName, colSpecs)))
                                            | (columnNo, _) =&gt; ParseError (columnNo, &quot;Expected primary expression - SELECT, DELETE, INSERT.&quot;);
 
 fun IsEqual (Int x1) (Int x2) = return (x1 = x2)
@@ -342,14 +390,23 @@ fun IsNotEqual (Int x1) (Int x2) = return (x1 &lt;&gt; x2)
   | IsNotEqual (String x1) (String x2) = return (x1 &lt;&gt; x2)
   | IsNotEqual _ _ = RuntimeException &quot;Could not compare types.&quot;;
 
-fun CastValue colType value = return (String value);
+fun CastValue (&quot;int&quot;, colName) value =
+    (case ParseInt value
+       of NONE =&gt; RuntimeException (&quot;DB Integrity error: column &quot; ^ colName ^ &quot; contains invalid data (could not parse integer)&quot;)
+        | (SOME actualVal) =&gt; return (Int actualVal))
+  | CastValue (&quot;real&quot;, colName) value =
+    (case ParseReal value
+       of NONE =&gt; RuntimeException (&quot;DB Integrity error: column &quot; ^ colName ^ &quot; contains invalid data (could not parse real)&quot;)
+        | (SOME actualVal) =&gt; return (Real actualVal))
+  | CastValue (&quot;string&quot;, _) value = return (String value)
+  | CastValue (colType, colName) value = RuntimeException (&quot;Invalid column type &quot; ^ colType ^ &quot; for column &quot; ^ colName);
 
 fun GetActualValue _ [] [] = RuntimeException &quot;Column not found&quot;
   | GetActualValue _ _ [] = RuntimeException &quot;DB integrity error: more columns than values&quot;
   | GetActualValue _ [] _ = RuntimeException &quot;DB integrity error: more values than columns&quot;
   | GetActualValue (Identifier varName) ((colType, colName)::restColSpecs) (rowHead::rest) = 
     (if colName = varName
-     then (CastValue colType rowHead)
+     then (CastValue (colType, colName) rowHead)
      else (GetActualValue (Identifier varName) restColSpecs rest))
   | GetActualValue variable dbColSpecsRows rows = return variable;
 
@@ -376,18 +433,96 @@ fun ShouldSelectRow _  _ [] = RuntimeException &quot;Table must not be void.&quo
                                            &gt;&gt;= (fn (leftIsTrue) =&gt; (ShouldSelectRow expr2 dbColSpecs row)
                                            &gt;&gt;= (fn (rightIsTrue) =&gt; return (leftIsTrue orelse rightIsTrue)));
 
-fun ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
-  | ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
-          (ShouldSelectRow whereConditions dbColSpecs row)
-      &gt;&gt;= (fn (shouldSelectRow) =&gt; (ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
-      &gt;&gt;= (fn (rows) =&gt; (if shouldSelectRow
-                         then return (row::rows)
-                         else return (rows))))
-  | ExecuteSelect _ _ = RuntimeException &quot;Invalid query or table.&quot;
+fun SelectColumn colName [] [] = RuntimeException (&quot;Column &quot; ^ colName ^ &quot; not found&quot;)
+  | SelectColumn _ _ [] = RuntimeException &quot;DB integrity error: more columns than values&quot;
+  | SelectColumn _ [] _ = RuntimeException &quot;DB integrity error: more values than columns&quot;
+  | SelectColumn colName ((dbColType, dbColName)::restDbColSpecs) (rowValue::restRow) =
+      (if colName = dbColName
+       then return rowValue
+       else SelectColumn colName restDbColSpecs restRow);
 
-fun IsReadQuery query = case Tokenize query
-                          of ((_, TSelect)::rest) =&gt; true
-                           | _ =&gt; false;
+fun SelectColumns All dbColSpecs row = return row
+  | SelectColumns (Columns (col::rest)) dbColSpecs row = (SelectColumn col dbColSpecs row)
+                                                     &gt;&gt;= (fn (value) =&gt; (SelectColumns (Columns rest) dbColSpecs row)
+                                                     &gt;&gt;= (fn (values) =&gt; return (value::values)))
+  | SelectColumns (Columns []) dbColSpecs row = return [];
+
+fun ExecuteSelectOnTable (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
+  | ExecuteSelectOnTable (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
+          (ShouldSelectRow whereConditions dbColSpecs row)
+      &gt;&gt;= (fn (shouldSelectRow) =&gt; (ExecuteSelectOnTable (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
+      &gt;&gt;= (fn (rows) =&gt; (if shouldSelectRow
+                         then (SelectColumns columns dbColSpecs row) &gt;&gt;= (fn (projectedRow) =&gt; return (projectedRow::rows))
+                         else return rows)))
+  | ExecuteSelectOnTable _ _ = RuntimeException &quot;Invalid query or table.&quot;;
+
+fun ExecuteDeleteOnTable (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
+  | ExecuteDeleteOnTable (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
+          (ShouldSelectRow whereConditions dbColSpecs row)
+      &gt;&gt;= (fn (shouldSelectRow) =&gt; (ExecuteDeleteOnTable (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
+      &gt;&gt;= (fn (rows) =&gt; (if shouldSelectRow
+                         then return rows
+                         else return (row::rows))))
+  | ExecuteDeleteOnTable _ _ = RuntimeException &quot;Invalid query or table.&quot;;
+
+fun BuildValue (&quot;int&quot;, _) (Int value) = return (Int.toString value)
+  | BuildValue (&quot;real&quot;, _) (Real value) = return (Real.toString value)
+  | BuildValue (&quot;string&quot;, _) (String value) = return value
+  | BuildValue (_, colName) _ = RuntimeException (&quot;Column &quot; ^ colName ^ &quot; type differs from value type&quot;);
+
+fun BuildRow [] [] = return []
+  | BuildRow [] _ = RuntimeException &quot;Too many values to insert.&quot;
+  | BuildRow _ [] = RuntimeException &quot;Number of values does not match number of columns.&quot;
+  | BuildRow (dbColSpec::restDbColSpecs) (value::values) = (BuildValue dbColSpec value)
+                                                       &gt;&gt;= (fn (newValue) =&gt; (BuildRow restDbColSpecs values)
+                                                       &gt;&gt;= (fn (newValues) =&gt; return (newValue::newValues)));
+  
+fun ExecuteInsertOnTable (Insert (tableName, values)) (dbTableName, dbColSpecs, rows) = (BuildRow dbColSpecs values)
+                                                                             &gt;&gt;= (fn newRow =&gt; return (newRow::rows))
+  | ExecuteInsertOnTable _ _ = RuntimeException &quot;Invalid query or table.&quot;;
+
+fun ExecuteCreateTable (CreateTable (tableName, [])) [] = RuntimeException &quot;Could not create table with no columns.&quot;
+  | ExecuteCreateTable (CreateTable (tableName, (colSpec::colSpecs))) [] =
+    (case colSpec
+       of (ColInt colName) =&gt; return (&quot;int&quot;, colName)
+        | (ColReal colName) =&gt; return (&quot;real&quot;, colName)
+        | (ColString colName) =&gt; return (&quot;string&quot;, colName))
+    &gt;&gt;= (fn (colSpec) =&gt;
+        (case colSpecs
+           of [] =&gt; return (tableName, colSpec::nil, [])
+            | _  =&gt; (ExecuteCreateTable (CreateTable (tableName, colSpecs)) []) 
+                &gt;&gt;= (fn (tableName, colSpecs, rows) =&gt; return (tableName, colSpec::colSpecs, rows))))
+  | ExecuteCreateTable (CreateTable (tableName, colSpecs)) ((dbTableName, dbTableSpecs, dbTableRows)::restDb) =
+      (if tableName = dbTableName
+       then RuntimeException &quot;A table with the same name already exists.&quot;
+       else (ExecuteCreateTable (CreateTable (tableName, colSpecs)) restDb));
+
+fun GetTable (Select (_, tableName, _)) = return tableName
+  | GetTable (Insert (tableName, _)) = return tableName
+  | GetTable (Delete (tableName, _)) = return tableName
+(*  | GetTable _ = RuntimeException &quot;Invalid table operation.&quot;;*)
+
+fun ExecuteWriteInsertOnDb query db WriteMethod = (WriteMethod query db) &gt;&gt;= (fn (newTable) =&gt; return (newTable::db));
+
+fun ExecuteWriteUpdateOnDb query [] _ = (GetTable query) &gt;&gt;= (fn (tableName) =&gt; RuntimeException (&quot;Table &quot; ^ tableName ^ &quot; not found&quot;))
+  | ExecuteWriteUpdateOnDb query ((dbTableName, dbColSpecs, rows)::restTables) WriteMethod = (GetTable query)
+    &gt;&gt;= (fn (tableName) =&gt;
+      (if dbTableName = tableName
+       then (WriteMethod query (dbTableName, dbColSpecs, rows))
+        &gt;&gt;= (fn (modifiedTableRows) =&gt; return ((dbTableName, dbColSpecs, modifiedTableRows)::restTables))
+       else (ExecuteWriteUpdateOnDb query restTables WriteMethod)
+        &gt;&gt;= (fn (modifiedDatabase) =&gt; return ((dbTableName, dbColSpecs, rows)::modifiedDatabase))));
+
+fun ExecuteReadOnDb query [] _ = (GetTable query) &gt;&gt;= (fn (tableName) =&gt; RuntimeException (&quot;Table &quot; ^ tableName ^ &quot; not found&quot;))
+  | ExecuteReadOnDb query ((dbTableName, dbColSpecs, rows)::restTables) ReadMethod = (GetTable query)
+    &gt;&gt;= (fn (tableName) =&gt;
+      (if dbTableName = tableName
+       then (ReadMethod query (dbTableName, dbColSpecs, rows))
+       else (ExecuteReadOnDb query restTables ReadMethod)));
+
+fun IsReadQuery queryStr = case Tokenize queryStr
+                             of ((_, TSelect)::rest) =&gt; true
+                              | _ =&gt; false;
           <layout>datatype Token = TSelect
                | TInsert
                | TUpdate
@@ -410,7 +545,12 @@ fun IsReadQuery query = case Tokenize query
                | TInvalid of string
                | TOpeningParanthesis
                | TClosingParanthesis
-               | TOperatorStar;
+               | TOperatorStar
+               | TTable
+               | TCreate
+               | TTypeInt
+               | TTypeReal
+               | TTypeString;
 
 fun ParseIntLeft value [] = (SOME value)
   | ParseIntLeft leftVal (ch::x) = if (Char.isDigit ch)
@@ -481,7 +621,12 @@ fun ParseToken tokenStr = case lower tokenStr
                              | &quot;into&quot;   =&gt; TInto
                              | &quot;from&quot;   =&gt; TFrom
                              | &quot;values&quot; =&gt; TValues
+                             | &quot;table&quot;  =&gt; TTable
+                             | &quot;create&quot; =&gt; TCreate
                              | &quot;set&quot;    =&gt; TSet
+                             | &quot;int&quot;    =&gt; TTypeInt
+                             | &quot;real&quot;   =&gt; TTypeReal
+                             | &quot;string&quot; =&gt; TTypeString
                              | &quot;*&quot;      =&gt; TOperatorStar
                              | value    =&gt; ParseDynamic tokenStr
 
@@ -624,22 +769,58 @@ fun ParseValues tokens = (ParseSingleValue tokens)
                          &gt;&gt;= (fn (cols, rest) =&gt; return (col::cols, rest)));
 
 fun ParseInsertValues ((_, TValues)::rest) = (ParseValues rest)
-  | ParseInsertValues ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected VALUES keyword.&quot;)
-  | ParseInsertValues [] = ParseError (~1, &quot;Expected VALUES keyword.&quot;);
+  | ParseInsertValues ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected VALUES keyword&quot;)
+  | ParseInsertValues [] = ParseError (~1, &quot;Expected VALUES keyword&quot;);
 
 fun ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(_, TIdentifier tableName)::tokens) = (ParseInsertValues tokens)
                                                     &gt;&gt;= (fn (conditions, rest) =&gt; return (tableName, conditions))
-  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected table name.&quot;)
-  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::[]) = ParseError (~1, &quot;Expected table name.&quot;)
-  | ParseInsertFromTokens ((_, TInsert)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INTO keyword.&quot;)
-  | ParseInsertFromTokens ((_, TInsert)::[]) = ParseError (~1, &quot;Expected INTO keyword.&quot;)
-  | ParseInsertFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INSERT keyword.&quot;)
-  | ParseInsertFromTokens [] = ParseError (~1, &quot;Expected INSERT keyword.&quot;);
+  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected table name&quot;)
+  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::[]) = ParseError (~1, &quot;Expected table name&quot;)
+  | ParseInsertFromTokens ((_, TInsert)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INTO keyword&quot;)
+  | ParseInsertFromTokens ((_, TInsert)::[]) = ParseError (~1, &quot;Expected INTO keyword&quot;)
+  | ParseInsertFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected INSERT keyword&quot;)
+  | ParseInsertFromTokens [] = ParseError (~1, &quot;Expected INSERT keyword&quot;);
 
+datatype InternalColSpec = ColInt of string
+                         | ColReal of string
+                         | ColString of string;
+
+fun ParseColSpec ((_, TIdentifier varName)::(_, TTypeInt)::rest) = return (ColInt varName, rest)
+  | ParseColSpec ((_, TIdentifier varName)::(_, TTypeReal)::rest) = return (ColReal varName, rest)
+  | ParseColSpec ((_, TIdentifier varName)::(_, TTypeString)::rest) = return (ColString varName, rest)
+  | ParseColSpec ((_, TIdentifier varName)::(columnNo, _)::rest) = ParseError (columnNo, &quot;Expected type&quot;)
+  | ParseColSpec ((_, TIdentifier varName)::[]) = ParseError (~1, &quot;Expected type&quot;)
+  | ParseColSpec ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected identifier&quot;)
+  | ParseColSpec [] = ParseError (~1, &quot;Expected identifier&quot;);
+
+fun ParseColSpecs tokens = (ParseColSpec tokens)
+                       &gt;&gt;= (fn (colSpec, rest) =&gt;
+                        (case rest
+                           of ((columnNo, TClosingParanthesis)::rest) =&gt; return (colSpec::nil, (columnNo, TClosingParanthesis)::rest)
+                            | _ =&gt; (ParseColSpecs rest)
+                               &gt;&gt;= (fn (colSpecs, rest) =&gt; return (colSpec::colSpecs, rest))));
+
+fun ParseCreateTableColSpecs ((_, TOpeningParanthesis)::rest) = (ParseColSpecs rest) &gt;&gt;= (fn (cols, rest) =&gt; 
+      (case rest
+         of ((_, TClosingParanthesis)::rest) =&gt; return (cols, rest)
+          | ((columnNo, _)::rest) =&gt; ParseError (columnNo, &quot;Expected closing paranthesis&quot;)
+          | [] =&gt; ParseError (~1, &quot;Expected closing paranthesis&quot;)))
+  | ParseCreateTableColSpecs ((columnNo, _)::rest) = ParseError (columnNo, &quot;Expected opening paranthesis for columns&quot;)
+  | ParseCreateTableColSpecs [] = ParseError (~1, &quot;Expected opening paranthesis for columns&quot;);
+
+fun ParseCreateTableFromTokens ((_, TCreate)::(_, TTable)::(_, TIdentifier tableName)::tokens) = (ParseCreateTableColSpecs tokens)
+                                                    &gt;&gt;= (fn (conditions, rest) =&gt; return (tableName, conditions))
+  | ParseCreateTableFromTokens ((_, TCreate)::(_, TTable)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected table name&quot;)
+  | ParseCreateTableFromTokens ((_, TCreate)::(_, TTable)::[]) = ParseError (~1, &quot;Expected table name&quot;)
+  | ParseCreateTableFromTokens ((_, TCreate)::(columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected TABLE keyword&quot;)
+  | ParseCreateTableFromTokens ((_, TCreate)::[]) = ParseError (~1, &quot;Expected TABLE keyword&quot;)
+  | ParseCreateTableFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, &quot;Expected CREATE keyword&quot;)
+  | ParseCreateTableFromTokens [] = ParseError (~1, &quot;Expected CREATE keyword&quot;);
 
 datatype InternalQuery = Select of ColNameList * string * WhereCondition
                        | Insert of string * (Value list)
-                       | Delete of string * WhereCondition;
+                       | Delete of string * WhereCondition
+                       | CreateTable of string * (InternalColSpec list)
 
 fun ParseQueryFromTokens [] = ParseError (~1, &quot;Expected primary expression - SELECT, DELETE, INSERT.&quot;)
   | ParseQueryFromTokens (head::tokens) = case head
@@ -651,6 +832,8 @@ fun ParseQueryFromTokens [] = ParseError (~1, &quot;Expected primary expression 
                                                     &gt;&gt;= (fn (tableName, values) =&gt; return (Insert (tableName, values)))
                                            | (_, TDelete) =&gt; (ParseDeleteFromTokens (head::tokens))
                                                     &gt;&gt;= (fn (tableName, whereConditions) =&gt; return (Delete (tableName, whereConditions)))
+                                           | (_, TCreate) =&gt; (ParseCreateTableFromTokens (head::tokens))
+                                                    &gt;&gt;= (fn (tableName, colSpecs) =&gt; return (CreateTable (tableName, colSpecs)))
                                            | (columnNo, _) =&gt; ParseError (columnNo, &quot;Expected primary expression - SELECT, DELETE, INSERT.&quot;);
 
 fun IsEqual (Int x1) (Int x2) = return (x1 = x2)
@@ -673,14 +856,23 @@ fun IsNotEqual (Int x1) (Int x2) = return (x1 &lt;&gt; x2)
   | IsNotEqual (String x1) (String x2) = return (x1 &lt;&gt; x2)
   | IsNotEqual _ _ = RuntimeException &quot;Could not compare types.&quot;;
 
-fun CastValue colType value = return (String value);
+fun CastValue (&quot;int&quot;, colName) value =
+    (case ParseInt value
+       of NONE =&gt; RuntimeException (&quot;DB Integrity error: column &quot; ^ colName ^ &quot; contains invalid data (could not parse integer)&quot;)
+        | (SOME actualVal) =&gt; return (Int actualVal))
+  | CastValue (&quot;real&quot;, colName) value =
+    (case ParseReal value
+       of NONE =&gt; RuntimeException (&quot;DB Integrity error: column &quot; ^ colName ^ &quot; contains invalid data (could not parse real)&quot;)
+        | (SOME actualVal) =&gt; return (Real actualVal))
+  | CastValue (&quot;string&quot;, _) value = return (String value)
+  | CastValue (colType, colName) value = RuntimeException (&quot;Invalid column type &quot; ^ colType ^ &quot; for column &quot; ^ colName);
 
 fun GetActualValue _ [] [] = RuntimeException &quot;Column not found&quot;
   | GetActualValue _ _ [] = RuntimeException &quot;DB integrity error: more columns than values&quot;
   | GetActualValue _ [] _ = RuntimeException &quot;DB integrity error: more values than columns&quot;
   | GetActualValue (Identifier varName) ((colType, colName)::restColSpecs) (rowHead::rest) = 
     (if colName = varName
-     then (CastValue colType rowHead)
+     then (CastValue (colType, colName) rowHead)
      else (GetActualValue (Identifier varName) restColSpecs rest))
   | GetActualValue variable dbColSpecsRows rows = return variable;
 
@@ -707,18 +899,96 @@ fun ShouldSelectRow _  _ [] = RuntimeException &quot;Table must not be void.&quo
                                            &gt;&gt;= (fn (leftIsTrue) =&gt; (ShouldSelectRow expr2 dbColSpecs row)
                                            &gt;&gt;= (fn (rightIsTrue) =&gt; return (leftIsTrue orelse rightIsTrue)));
 
-fun ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
-  | ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
-          (ShouldSelectRow whereConditions dbColSpecs row)
-      &gt;&gt;= (fn (shouldSelectRow) =&gt; (ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
-      &gt;&gt;= (fn (rows) =&gt; (if shouldSelectRow
-                         then return (row::rows)
-                         else return (rows))))
-  | ExecuteSelect _ _ = RuntimeException &quot;Invalid query or table.&quot;
+fun SelectColumn colName [] [] = RuntimeException (&quot;Column &quot; ^ colName ^ &quot; not found&quot;)
+  | SelectColumn _ _ [] = RuntimeException &quot;DB integrity error: more columns than values&quot;
+  | SelectColumn _ [] _ = RuntimeException &quot;DB integrity error: more values than columns&quot;
+  | SelectColumn colName ((dbColType, dbColName)::restDbColSpecs) (rowValue::restRow) =
+      (if colName = dbColName
+       then return rowValue
+       else SelectColumn colName restDbColSpecs restRow);
 
-fun IsReadQuery query = case Tokenize query
-                          of ((_, TSelect)::rest) =&gt; true
-                           | _ =&gt; false;</layout>
+fun SelectColumns All dbColSpecs row = return row
+  | SelectColumns (Columns (col::rest)) dbColSpecs row = (SelectColumn col dbColSpecs row)
+                                                     &gt;&gt;= (fn (value) =&gt; (SelectColumns (Columns rest) dbColSpecs row)
+                                                     &gt;&gt;= (fn (values) =&gt; return (value::values)))
+  | SelectColumns (Columns []) dbColSpecs row = return [];
+
+fun ExecuteSelectOnTable (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
+  | ExecuteSelectOnTable (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
+          (ShouldSelectRow whereConditions dbColSpecs row)
+      &gt;&gt;= (fn (shouldSelectRow) =&gt; (ExecuteSelectOnTable (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
+      &gt;&gt;= (fn (rows) =&gt; (if shouldSelectRow
+                         then (SelectColumns columns dbColSpecs row) &gt;&gt;= (fn (projectedRow) =&gt; return (projectedRow::rows))
+                         else return rows)))
+  | ExecuteSelectOnTable _ _ = RuntimeException &quot;Invalid query or table.&quot;;
+
+fun ExecuteDeleteOnTable (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
+  | ExecuteDeleteOnTable (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
+          (ShouldSelectRow whereConditions dbColSpecs row)
+      &gt;&gt;= (fn (shouldSelectRow) =&gt; (ExecuteDeleteOnTable (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
+      &gt;&gt;= (fn (rows) =&gt; (if shouldSelectRow
+                         then return rows
+                         else return (row::rows))))
+  | ExecuteDeleteOnTable _ _ = RuntimeException &quot;Invalid query or table.&quot;;
+
+fun BuildValue (&quot;int&quot;, _) (Int value) = return (Int.toString value)
+  | BuildValue (&quot;real&quot;, _) (Real value) = return (Real.toString value)
+  | BuildValue (&quot;string&quot;, _) (String value) = return value
+  | BuildValue (_, colName) _ = RuntimeException (&quot;Column &quot; ^ colName ^ &quot; type differs from value type&quot;);
+
+fun BuildRow [] [] = return []
+  | BuildRow [] _ = RuntimeException &quot;Too many values to insert.&quot;
+  | BuildRow _ [] = RuntimeException &quot;Number of values does not match number of columns.&quot;
+  | BuildRow (dbColSpec::restDbColSpecs) (value::values) = (BuildValue dbColSpec value)
+                                                       &gt;&gt;= (fn (newValue) =&gt; (BuildRow restDbColSpecs values)
+                                                       &gt;&gt;= (fn (newValues) =&gt; return (newValue::newValues)));
+  
+fun ExecuteInsertOnTable (Insert (tableName, values)) (dbTableName, dbColSpecs, rows) = (BuildRow dbColSpecs values)
+                                                                             &gt;&gt;= (fn newRow =&gt; return (newRow::rows))
+  | ExecuteInsertOnTable _ _ = RuntimeException &quot;Invalid query or table.&quot;;
+
+fun ExecuteCreateTable (CreateTable (tableName, [])) [] = RuntimeException &quot;Could not create table with no columns.&quot;
+  | ExecuteCreateTable (CreateTable (tableName, (colSpec::colSpecs))) [] =
+    (case colSpec
+       of (ColInt colName) =&gt; return (&quot;int&quot;, colName)
+        | (ColReal colName) =&gt; return (&quot;real&quot;, colName)
+        | (ColString colName) =&gt; return (&quot;string&quot;, colName))
+    &gt;&gt;= (fn (colSpec) =&gt;
+        (case colSpecs
+           of [] =&gt; return (tableName, colSpec::nil, [])
+            | _  =&gt; (ExecuteCreateTable (CreateTable (tableName, colSpecs)) []) 
+                &gt;&gt;= (fn (tableName, colSpecs, rows) =&gt; return (tableName, colSpec::colSpecs, rows))))
+  | ExecuteCreateTable (CreateTable (tableName, colSpecs)) ((dbTableName, dbTableSpecs, dbTableRows)::restDb) =
+      (if tableName = dbTableName
+       then RuntimeException &quot;A table with the same name already exists.&quot;
+       else (ExecuteCreateTable (CreateTable (tableName, colSpecs)) restDb));
+
+fun GetTable (Select (_, tableName, _)) = return tableName
+  | GetTable (Insert (tableName, _)) = return tableName
+  | GetTable (Delete (tableName, _)) = return tableName
+(*  | GetTable _ = RuntimeException &quot;Invalid table operation.&quot;;*)
+
+fun ExecuteWriteInsertOnDb query db WriteMethod = (WriteMethod query db) &gt;&gt;= (fn (newTable) =&gt; return (newTable::db));
+
+fun ExecuteWriteUpdateOnDb query [] _ = (GetTable query) &gt;&gt;= (fn (tableName) =&gt; RuntimeException (&quot;Table &quot; ^ tableName ^ &quot; not found&quot;))
+  | ExecuteWriteUpdateOnDb query ((dbTableName, dbColSpecs, rows)::restTables) WriteMethod = (GetTable query)
+    &gt;&gt;= (fn (tableName) =&gt;
+      (if dbTableName = tableName
+       then (WriteMethod query (dbTableName, dbColSpecs, rows))
+        &gt;&gt;= (fn (modifiedTableRows) =&gt; return ((dbTableName, dbColSpecs, modifiedTableRows)::restTables))
+       else (ExecuteWriteUpdateOnDb query restTables WriteMethod)
+        &gt;&gt;= (fn (modifiedDatabase) =&gt; return ((dbTableName, dbColSpecs, rows)::modifiedDatabase))));
+
+fun ExecuteReadOnDb query [] _ = (GetTable query) &gt;&gt;= (fn (tableName) =&gt; RuntimeException (&quot;Table &quot; ^ tableName ^ &quot; not found&quot;))
+  | ExecuteReadOnDb query ((dbTableName, dbColSpecs, rows)::restTables) ReadMethod = (GetTable query)
+    &gt;&gt;= (fn (tableName) =&gt;
+      (if dbTableName = tableName
+       then (ReadMethod query (dbTableName, dbColSpecs, rows))
+       else (ExecuteReadOnDb query restTables ReadMethod)));
+
+fun IsReadQuery queryStr = case Tokenize queryStr
+                             of ((_, TSelect)::rest) =&gt; true
+                              | _ =&gt; false;</layout>
         </ml>
       </block>
       <block id="ID1412472179">
@@ -1109,32 +1379,62 @@ List.concat [(if currIdx mod wrkCnt = wrkIdx then [h] else []), GetWorkerData(ta
   | GetWorkerData(h::tail, currIdx, wrkIdx, wrkCnt) = 
 List.concat [(if currIdx mod wrkCnt = wrkIdx then [h] else []), GetWorkerData(tail, currIdx + 1, wrkIdx, wrkCnt)]</layout>
         </ml>
-        <ml id="ID1412889078">fun ExecuteSelectAssumption queryStr db = 
-ParseQueryFromTokens (Tokenize queryStr) &gt;&gt;= (fn (query) =&gt; ExecuteSelect query db);
-          <layout>fun ExecuteSelectAssumption queryStr db = 
-ParseQueryFromTokens (Tokenize queryStr) &gt;&gt;= (fn (query) =&gt; ExecuteSelect query db);</layout>
+        <ml id="ID1412714731">fun ExecuteQuery (uId, qType, qStr) db = 
+case (Tokenize qStr)
+  of ((c, TSelect)::rest) =&gt; ParseQueryFromTokens ((c, TSelect)::rest)
+ &gt;&gt;= (fn (query) =&gt; (ExecuteReadOnDb query db ExecuteSelectOnTable)
+ &gt;&gt;= (fn (result) =&gt; return ((uId, (&quot;OK&quot;, result)), db)))
+   | ((c, TInsert)::rest) =&gt; ParseQueryFromTokens ((c, TInsert)::rest)
+ &gt;&gt;= (fn (query) =&gt; (ExecuteWriteUpdateOnDb query db ExecuteInsertOnTable)
+ &gt;&gt;= (fn (result) =&gt; return ((uId, (&quot;OK&quot;, [])), result)))
+   | ((c, TDelete)::rest) =&gt; ParseQueryFromTokens ((c, TDelete)::rest)
+ &gt;&gt;= (fn (query) =&gt; (ExecuteWriteUpdateOnDb query db ExecuteDeleteOnTable) 
+ &gt;&gt;= (fn (result) =&gt; return ((uId, (&quot;OK&quot;, [])), result)))
+   | ((c, TCreate)::rest) =&gt; ParseQueryFromTokens ((c, TCreate)::rest)
+ &gt;&gt;= (fn (query) =&gt; (ExecuteWriteInsertOnDb query db ExecuteCreateTable)
+ &gt;&gt;= (fn (result) =&gt; return ((uId, (&quot;OK&quot;, [])), result)));
+          <layout>fun ExecuteQuery (uId, qType, qStr) db = 
+case (Tokenize qStr)
+  of ((c, TSelect)::rest) =&gt; ParseQueryFromTokens ((c, TSelect)::rest)
+ &gt;&gt;= (fn (query) =&gt; (ExecuteReadOnDb query db ExecuteSelectOnTable)
+ &gt;&gt;= (fn (result) =&gt; return ((uId, (&quot;OK&quot;, result)), db)))
+   | ((c, TInsert)::rest) =&gt; ParseQueryFromTokens ((c, TInsert)::rest)
+ &gt;&gt;= (fn (query) =&gt; (ExecuteWriteUpdateOnDb query db ExecuteInsertOnTable)
+ &gt;&gt;= (fn (result) =&gt; return ((uId, (&quot;OK&quot;, [])), result)))
+   | ((c, TDelete)::rest) =&gt; ParseQueryFromTokens ((c, TDelete)::rest)
+ &gt;&gt;= (fn (query) =&gt; (ExecuteWriteUpdateOnDb query db ExecuteDeleteOnTable) 
+ &gt;&gt;= (fn (result) =&gt; return ((uId, (&quot;OK&quot;, [])), result)))
+   | ((c, TCreate)::rest) =&gt; ParseQueryFromTokens ((c, TCreate)::rest)
+ &gt;&gt;= (fn (query) =&gt; (ExecuteWriteInsertOnDb query db ExecuteCreateTable)
+ &gt;&gt;= (fn (result) =&gt; return ((uId, (&quot;OK&quot;, [])), result)));</layout>
         </ml>
-        <ml id="ID1412714731">fun ExecuteQuery((uId, qType, qStr) : (CInternalQuery, dbHead::dbTail : CDatabase) : CUserQueryResult = 
-(uId, case (ExecuteSelectAssumption qStr dbHead) of 
-  (ParseError (columnNo, msg)) =&gt; (msg ^ &quot; at column &quot; ^ (Int.toString columnNo), [])
-        | (RuntimeException msg) =&gt; (msg, [])
-        | (Result result) =&gt; (&quot;OK&quot;, result)
-)
-          <layout>fun ExecuteQuery((uId, qType, qStr) : (CInternalQuery, dbHead::dbTail : CDatabase) : CUserQueryResult = 
-(uId, case (ExecuteSelectAssumption qStr dbHead) of 
-  (ParseError (columnNo, msg)) =&gt; (msg ^ &quot; at column &quot; ^ (Int.toString columnNo), [])
-        | (RuntimeException msg) =&gt; (msg, [])
-        | (Result result) =&gt; (&quot;OK&quot;, result)
-)</layout>
-        </ml>
-        <ml id="ID1412845715">fun ExecuteQueries([], db) = return ([], db)
-    | ExecuteQueries(q::tail, db) = (ExecuteQuery q db)
-&gt;&gt;= (fn (qResult, newDb) =&gt; (ExecuteQueries tail newDb)
+        <ml id="ID1412845715">fun ExecuteQueries2 [] db = return ([], db)
+    | ExecuteQueries2 ((uId, qType, qStr)::tail) db = (case (ExecuteQuery (uId, qType, qStr) db)
+   of Result ((uId, (msg, lst)), newDb) =&gt; return ((uId, (msg, lst)), newDb)
+    | ParseError (col, msg) =&gt; return ((uId, (msg, [])), db)
+| RuntimeException msg =&gt; return ((uId, (msg, [])), db) )
+&gt;&gt;= (fn (qResult, newDb) =&gt; (ExecuteQueries2 tail newDb)
 &gt;&gt;= (fn (qResult2, newDb2) =&gt; return (qResult::qResult2, newDb2)));
-          <layout>fun ExecuteQueries([], db) = return ([], db)
-    | ExecuteQueries(q::tail, db) = (ExecuteQuery q db)
-&gt;&gt;= (fn (qResult, newDb) =&gt; (ExecuteQueries tail newDb)
+          <layout>fun ExecuteQueries2 [] db = return ([], db)
+    | ExecuteQueries2 ((uId, qType, qStr)::tail) db = (case (ExecuteQuery (uId, qType, qStr) db)
+   of Result ((uId, (msg, lst)), newDb) =&gt; return ((uId, (msg, lst)), newDb)
+    | ParseError (col, msg) =&gt; return ((uId, (msg, [])), db)
+| RuntimeException msg =&gt; return ((uId, (msg, [])), db) )
+&gt;&gt;= (fn (qResult, newDb) =&gt; (ExecuteQueries2 tail newDb)
 &gt;&gt;= (fn (qResult2, newDb2) =&gt; return (qResult::qResult2, newDb2)));</layout>
+        </ml>
+        <ml id="ID1413206016">fun ExecuteQueries(x, y) = case (ExecuteQueries2 x y)
+   of Result (t, z) =&gt; (t, z)
+    | _ =&gt; ([], []);
+          <layout>fun ExecuteQueries(x, y) = case (ExecuteQueries2 x y)
+   of Result (t, z) =&gt; (t, z)
+    | _ =&gt; ([], []);</layout>
+        </ml>
+        <ml id="ID1413209200">fun GetQResults((resList, newDb)) = resList;
+          <layout>fun GetQResults((resList, newDb)) = resList;</layout>
+        </ml>
+        <ml id="ID1413209660">fun GetNewDb((resList, newDb)) = newDb;
+          <layout>fun GetNewDb((resList, newDb)) = newDb;</layout>
         </ml>
       </block>
     </globbox>
@@ -1230,8 +1530,8 @@ ParseQueryFromTokens (Tokenize queryStr) &gt;&gt;= (fn (query) =&gt; ExecuteSele
                 version="4.0.1">CQueryString</text>
         </type>
         <initmark id="ID1412470164">
-          <posattr x="-402.000000"
-                   y="120.000000"/>
+          <posattr x="-430.000000"
+                   y="37.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -1241,7 +1541,7 @@ ParseQueryFromTokens (Tokenize queryStr) &gt;&gt;= (fn (query) =&gt; ExecuteSele
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1">1` &quot;SELECT * from dual&quot;</text>
+                version="4.0.1">1` &quot;SELECT col1 FROM table1 WHERE col1 &lt; 2&quot; ++ 1` &quot;SELECT col1 FROM table1 WHERE col1 &lt; 3&quot;</text>
         </initmark>
       </place>
       <place id="ID1412470434">
@@ -1404,110 +1704,6 @@ Queue</text>
                     bold="false"/>
           <text tool="CPN Tools"
                 version="4.0.1">[]</text>
-        </initmark>
-      </place>
-      <place id="ID1413200485">
-        <posattr x="-420.000000"
-                 y="588.000000"/>
-        <fillattr colour="White"
-                  pattern=""
-                  filled="false"/>
-        <lineattr colour="Black"
-                  thick="1"
-                  type="Solid"/>
-        <textattr colour="Black"
-                  bold="false"/>
-        <text></text>
-        <ellipse w="60.000000"
-                 h="40.000000"/>
-        <token x="-10.000000"
-               y="0.000000"/>
-        <marking x="0.000000"
-                 y="0.000000"
-                 hidden="false">
-          <snap snap_id="0"
-                anchor.horizontal="0"
-                anchor.vertical="0"/>
-        </marking>
-        <type id="ID1413200486">
-          <posattr x="-384.500000"
-                   y="564.000000"/>
-          <fillattr colour="White"
-                    pattern="Solid"
-                    filled="false"/>
-          <lineattr colour="Black"
-                    thick="0"
-                    type="Solid"/>
-          <textattr colour="Black"
-                    bold="false"/>
-          <text tool="CPN Tools"
-                version="4.0.1">INT</text>
-        </type>
-        <initmark id="ID1413200487">
-          <posattr x="-363.000000"
-                   y="611.000000"/>
-          <fillattr colour="White"
-                    pattern="Solid"
-                    filled="false"/>
-          <lineattr colour="Black"
-                    thick="0"
-                    type="Solid"/>
-          <textattr colour="Black"
-                    bold="false"/>
-          <text tool="CPN Tools"
-                version="4.0.1"/>
-        </initmark>
-      </place>
-      <place id="ID1413200508">
-        <posattr x="-101.000000"
-                 y="588.000000"/>
-        <fillattr colour="White"
-                  pattern=""
-                  filled="false"/>
-        <lineattr colour="Black"
-                  thick="1"
-                  type="Solid"/>
-        <textattr colour="Black"
-                  bold="false"/>
-        <text></text>
-        <ellipse w="60.000000"
-                 h="40.000000"/>
-        <token x="-10.000000"
-               y="0.000000"/>
-        <marking x="0.000000"
-                 y="0.000000"
-                 hidden="false">
-          <snap snap_id="0"
-                anchor.horizontal="0"
-                anchor.vertical="0"/>
-        </marking>
-        <type id="ID1413200509">
-          <posattr x="-58.500000"
-                   y="564.000000"/>
-          <fillattr colour="White"
-                    pattern="Solid"
-                    filled="false"/>
-          <lineattr colour="Black"
-                    thick="0"
-                    type="Solid"/>
-          <textattr colour="Black"
-                    bold="false"/>
-          <text tool="CPN Tools"
-                version="4.0.1">BOOL</text>
-        </type>
-        <initmark id="ID1413200510">
-          <posattr x="-44.000000"
-                   y="611.000000"/>
-          <fillattr colour="White"
-                    pattern="Solid"
-                    filled="false"/>
-          <lineattr colour="Black"
-                    thick="0"
-                    type="Solid"/>
-          <textattr colour="Black"
-                    bold="false"/>
-          <text tool="CPN Tools"
-                version="4.0.1"/>
         </initmark>
       </place>
       <trans id="ID1412469616"
@@ -1817,87 +2013,6 @@ Queries</text>
         <priority id="ID1412589303">
           <posattr x="239.000000"
                    y="347.000000"/>
-          <fillattr colour="White"
-                    pattern="Solid"
-                    filled="false"/>
-          <lineattr colour="Black"
-                    thick="0"
-                    type="Solid"/>
-          <textattr colour="Black"
-                    bold="false"/>
-          <text tool="CPN Tools"
-                version="4.0.1"/>
-        </priority>
-      </trans>
-      <trans id="ID1413200462"
-             explicit="false">
-        <posattr x="-252.000000"
-                 y="609.000000"/>
-        <fillattr colour="White"
-                  pattern=""
-                  filled="false"/>
-        <lineattr colour="Black"
-                  thick="1"
-                  type="Solid"/>
-        <textattr colour="Black"
-                  bold="false"/>
-        <text></text>
-        <box w="60.000000"
-             h="40.000000"/>
-        <binding x="7.200000"
-                 y="-3.000000"/>
-        <cond id="ID1413200463">
-          <posattr x="-291.000000"
-                   y="640.000000"/>
-          <fillattr colour="White"
-                    pattern="Solid"
-                    filled="false"/>
-          <lineattr colour="Black"
-                    thick="0"
-                    type="Solid"/>
-          <textattr colour="Black"
-                    bold="false"/>
-          <text tool="CPN Tools"
-                version="4.0.1"/>
-        </cond>
-        <time id="ID1413200464">
-          <posattr x="-207.500000"
-                   y="640.000000"/>
-          <fillattr colour="White"
-                    pattern="Solid"
-                    filled="false"/>
-          <lineattr colour="Black"
-                    thick="0"
-                    type="Solid"/>
-          <textattr colour="Black"
-                    bold="false"/>
-          <text tool="CPN Tools"
-                version="4.0.1"/>
-        </time>
-        <code id="ID1413200465">
-          <posattr x="-118.500000"
-                   y="529.000000"/>
-          <fillattr colour="White"
-                    pattern="Solid"
-                    filled="false"/>
-          <lineattr colour="Black"
-                    thick="0"
-                    type="Solid"/>
-          <textattr colour="Black"
-                    bold="false"/>
-          <text tool="CPN Tools"
-                version="4.0.1">input (idx0);
-output (b, idx1);
-action
-let
-   val (x,y) = (fn a =&gt; (true,a)) 2
-in
-    (x,y)
-end</text>
-        </code>
-        <priority id="ID1413200467">
-          <posattr x="-320.000000"
-                   y="578.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -2486,70 +2601,6 @@ end</text>
                     bold="false"/>
           <text tool="CPN Tools"
                 version="4.0.1">RemoveResult(resultList, userId)</text>
-        </annot>
-      </arc>
-      <arc id="ID1413200586"
-           orientation="PtoT"
-           order="1">
-        <posattr x="0.000000"
-                 y="0.000000"/>
-        <fillattr colour="White"
-                  pattern=""
-                  filled="false"/>
-        <lineattr colour="Black"
-                  thick="1"
-                  type="Solid"/>
-        <textattr colour="Black"
-                  bold="false"/>
-        <arrowattr headsize="1.200000"
-                   currentcyckle="2"/>
-        <transend idref="ID1413200462"/>
-        <placeend idref="ID1413200485"/>
-        <annot id="ID1413200587">
-          <posattr x="-339.000000"
-                   y="611.000000"/>
-          <fillattr colour="White"
-                    pattern="Solid"
-                    filled="false"/>
-          <lineattr colour="Black"
-                    thick="0"
-                    type="Solid"/>
-          <textattr colour="Black"
-                    bold="false"/>
-          <text tool="CPN Tools"
-                version="4.0.1">idx0</text>
-        </annot>
-      </arc>
-      <arc id="ID1413200649"
-           orientation="TtoP"
-           order="1">
-        <posattr x="0.000000"
-                 y="0.000000"/>
-        <fillattr colour="White"
-                  pattern=""
-                  filled="false"/>
-        <lineattr colour="Black"
-                  thick="1"
-                  type="Solid"/>
-        <textattr colour="Black"
-                  bold="false"/>
-        <arrowattr headsize="1.200000"
-                   currentcyckle="2"/>
-        <transend idref="ID1413200462"/>
-        <placeend idref="ID1413200508"/>
-        <annot id="ID1413200650">
-          <posattr x="-162.000000"
-                   y="609.000000"/>
-          <fillattr colour="White"
-                    pattern="Solid"
-                    filled="false"/>
-          <lineattr colour="Black"
-                    thick="0"
-                    type="Solid"/>
-          <textattr colour="Black"
-                    bold="false"/>
-          <text tool="CPN Tools"
-                version="4.0.1">b</text>
         </annot>
       </arc>
       <constraints/>
@@ -3641,7 +3692,7 @@ Set</text>
                 version="4.0.1">CInternalQueryQueue</text>
         </type>
         <initmark id="ID1412746152">
-          <posattr x="6.000000"
+          <posattr x="193.500000"
                    y="653.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -3652,7 +3703,7 @@ Set</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1">[]</text>
+                version="4.0.1">[(0, READ, &quot;SELECT col2, col1 FROM table1 WHERE col1 &lt; 3&quot;)]</text>
         </initmark>
       </place>
       <place id="ID1412746492">
@@ -3693,7 +3744,7 @@ Set</text>
                 version="4.0.1">CInternalQueryQueue</text>
         </type>
         <initmark id="ID1412746494">
-          <posattr x="14.000000"
+          <posattr x="181.500000"
                    y="193.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -3704,7 +3755,7 @@ Set</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1">[]</text>
+                version="4.0.1">[(0, WRITE, &quot;CREATE TABLE table1 (c1 string, c2 int )&quot;)]</text>
         </initmark>
       </place>
       <place id="ID1412746847">
@@ -3776,8 +3827,8 @@ Count</text>
                  h="62.000000"/>
         <token x="-10.000000"
                y="0.000000"/>
-        <marking x="-50.000000"
-                 y="-18.000000"
+        <marking x="31.000000"
+                 y="-32.000000"
                  hidden="false">
           <snap snap_id="0"
                 anchor.horizontal="3"
@@ -3798,8 +3849,8 @@ Count</text>
                 version="4.0.1">CDatabase</text>
         </type>
         <initmark id="ID1412846511">
-          <posattr x="22.000000"
-                   y="462.000000"/>
+          <posattr x="21.000000"
+                   y="444.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -3809,11 +3860,11 @@ Count</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1">1` [(&quot;table1&quot;, [(&quot;col1&quot;, &quot;string&quot;)], [[&quot;v1&quot;]])]</text>
+                version="4.0.1">1` [(&quot;table1&quot;, [(&quot;int&quot;, &quot;col1&quot;), (&quot;string&quot;, &quot;col2&quot;)], [[&quot;1&quot;, &quot;a&quot;], [&quot;2&quot;, &quot;b&quot;], [&quot;3&quot;, &quot;c&quot;]])]</text>
         </initmark>
       </place>
       <place id="ID1413036027">
-        <posattr x="252.000000"
+        <posattr x="311.000000"
                  y="630.000000"/>
         <fillattr colour="White"
                   pattern=""
@@ -3836,7 +3887,7 @@ Count</text>
                 anchor.vertical="0"/>
         </marking>
         <type id="ID1413036028">
-          <posattr x="293.500000"
+          <posattr x="352.500000"
                    y="606.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -3850,7 +3901,7 @@ Count</text>
                 version="4.0.1">BOOL</text>
         </type>
         <initmark id="ID1413195650">
-          <posattr x="308.000000"
+          <posattr x="350.000000"
                    y="653.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -3861,7 +3912,7 @@ Count</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1"/>
+                version="4.0.1">false</text>
         </initmark>
       </place>
       <place id="ID1413044049">
@@ -3882,7 +3933,7 @@ Count</text>
                y="0.000000"/>
         <marking x="0.000000"
                  y="0.000000"
-                 hidden="false">
+                 hidden="true">
           <snap snap_id="0"
                 anchor.horizontal="0"
                 anchor.vertical="0"/>
@@ -3902,7 +3953,7 @@ Count</text>
                 version="4.0.1">BOOL</text>
         </type>
         <initmark id="ID1413197303">
-          <posattr x="266.000000"
+          <posattr x="249.000000"
                    y="191.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -3913,7 +3964,7 @@ Count</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1"/>
+                version="4.0.1">false</text>
         </initmark>
       </place>
       <place id="ID1413100633">
@@ -3954,8 +4005,8 @@ Done</text>
           <text tool="CPN Tools"
                 version="4.0.1">BOOL</text>
         </type>
-        <initmark id="ID1413100635">
-          <posattr x="187.000000"
+        <initmark id="ID1413214764">
+          <posattr x="206.000000"
                    y="443.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -3966,7 +4017,7 @@ Done</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1">true</text>
+                version="4.0.1"/>
         </initmark>
       </place>
       <trans id="ID1412703983"
@@ -4090,9 +4141,9 @@ Queries</text>
           <text tool="CPN Tools"
                 version="4.0.1"/>
         </time>
-        <code id="ID1413200432">
-          <posattr x="579.500000"
-                   y="615.000000"/>
+        <code id="ID1413209891">
+          <posattr x="-7.500000"
+                   y="472.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -4102,14 +4153,7 @@ Queries</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1">input (wrkData, db);
-output (newResultList, newDb);
-action
-let
-    val (x,y) = ExecuteQueries(wrkData, db)
-in
-    (x, y);
-end</text>
+                version="4.0.1"/>
         </code>
         <priority id="ID1413199283">
           <posattr x="-140.000000"
@@ -4864,7 +4908,7 @@ Done</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1">List.concat [resultList, ExecuteQueries(wrkData, db)]</text>
+                version="4.0.1">List.concat [resultList, GetQResults(ExecuteQueries(wrkData, db))]</text>
         </annot>
       </arc>
       <arc id="ID1412834942"
@@ -4941,7 +4985,7 @@ Done</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1">List.concat [resultList, ExecuteQueries(wrkData, db)]</text>
+                version="4.0.1">List.concat [resultList, GetQResults(ExecuteQueries(wrkData, db))]</text>
         </annot>
       </arc>
       <arc id="ID1412851342"
@@ -5026,7 +5070,7 @@ Done</text>
         <transend idref="ID1412813813"/>
         <placeend idref="ID1412846509"/>
         <annot id="ID1412931328">
-          <posattr x="-85.000000"
+          <posattr x="38.500000"
                    y="470.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -5037,7 +5081,7 @@ Done</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1">db</text>
+                version="4.0.1">GetNewDb(ExecuteQueries(wrkData, db))</text>
         </annot>
       </arc>
       <arc id="ID1412933467"
@@ -5058,7 +5102,7 @@ Done</text>
         <transend idref="ID1412815144"/>
         <placeend idref="ID1412846509"/>
         <annot id="ID1412933468">
-          <posattr x="-71.000000"
+          <posattr x="52.500000"
                    y="357.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -5069,7 +5113,7 @@ Done</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1">db</text>
+                version="4.0.1">GetNewDb(ExecuteQueries(wrkData, db))</text>
         </annot>
       </arc>
       <arc id="ID1413049456"
@@ -5090,7 +5134,7 @@ Done</text>
         <transend idref="ID1412813813"/>
         <placeend idref="ID1413036027"/>
         <annot id="ID1413049457">
-          <posattr x="85.000000"
+          <posattr x="115.000000"
                    y="599.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -5122,8 +5166,8 @@ Done</text>
         <transend idref="ID1412813813"/>
         <placeend idref="ID1413036027"/>
         <annot id="ID1413052178">
-          <posattr x="91.000000"
-                   y="585.000000"/>
+          <posattr x="121.000000"
+                   y="584.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -5218,7 +5262,7 @@ Done</text>
         <transend idref="ID1413108001"/>
         <placeend idref="ID1413036027"/>
         <annot id="ID1413110977">
-          <posattr x="166.000000"
+          <posattr x="194.000000"
                    y="513.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -5346,8 +5390,8 @@ Done</text>
         <transend idref="ID1412703983"/>
         <placeend idref="ID1413036027"/>
         <annot id="ID1413180931">
-          <posattr x="293.000000"
-                   y="529.000000"/>
+          <posattr x="322.000000"
+                   y="523.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -5654,8 +5698,8 @@ Done</text>
                  height="617">
         <sheets>
           <cpnsheet id="ID1412538422"
-                    panx="24.000000"
-                    pany="374.000000"
+                    panx="51.000000"
+                    pany="251.000000"
                     zoom="1.000000"
                     instance="ID2149">
             <zorder>
@@ -5794,7 +5838,7 @@ Done</text>
         <IndexNode expanded="true">
           <IndexNode expanded="true"/>
         </IndexNode>
-        <IndexNode expanded="true">
+        <IndexNode expanded="false">
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
@@ -5806,7 +5850,7 @@ Done</text>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
         </IndexNode>
-        <IndexNode expanded="true">
+        <IndexNode expanded="false">
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
@@ -5840,6 +5884,8 @@ Done</text>
         <IndexNode expanded="true">
           <IndexNode expanded="true"/>
           <IndexNode expanded="false"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
