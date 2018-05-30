@@ -283,14 +283,23 @@ fun IsNotEqual (Int x1) (Int x2) = return (x1 <> x2)
   | IsNotEqual (String x1) (String x2) = return (x1 <> x2)
   | IsNotEqual _ _ = RuntimeException "Could not compare types.";
 
-fun CastValue colType value = return (String value);
+fun CastValue ("int", colName) value =
+    (case ParseInt value
+       of NONE => RuntimeException ("DB Integrity error: column " ^ colName ^ " contains invalid data (could not parse integer)")
+        | (SOME actualVal) => return (Int actualVal))
+  | CastValue ("real", colName) value =
+    (case ParseReal value
+       of NONE => RuntimeException ("DB Integrity error: column " ^ colName ^ " contains invalid data (could not parse real)")
+        | (SOME actualVal) => return (Real actualVal))
+  | CastValue ("string", _) value = return (String value)
+  | CastValue (colType, colName) value = RuntimeException ("Invalid column type " ^ colType ^ " for column " ^ colName);
 
 fun GetActualValue _ [] [] = RuntimeException "Column not found"
   | GetActualValue _ _ [] = RuntimeException "DB integrity error: more columns than values"
   | GetActualValue _ [] _ = RuntimeException "DB integrity error: more values than columns"
   | GetActualValue (Identifier varName) ((colType, colName)::restColSpecs) (rowHead::rest) = 
     (if colName = varName
-     then (CastValue colType rowHead)
+     then (CastValue (colType, colName) rowHead)
      else (GetActualValue (Identifier varName) restColSpecs rest))
   | GetActualValue variable dbColSpecsRows rows = return variable;
 
@@ -338,7 +347,32 @@ fun ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, d
       >>= (fn (rows) => (if shouldSelectRow
                          then (SelectColumns columns dbColSpecs row) >>= (fn (projectedRow) => return (projectedRow::rows))
                          else return rows)))
-  | ExecuteSelect _ _ = RuntimeException "Invalid query or table."
+  | ExecuteSelect _ _ = RuntimeException "Invalid query or table.";
+
+fun ExecuteDelete (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
+  | ExecuteDelete (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
+          (ShouldSelectRow whereConditions dbColSpecs row)
+      >>= (fn (shouldSelectRow) => (ExecuteDelete (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
+      >>= (fn (rows) => (if shouldSelectRow
+                         then return rows
+                         else return (row::rows))))
+  | ExecuteDelete _ _ = RuntimeException "Invalid query or table.";
+
+fun BuildValue ("int", _) (Int value) = return (Int.toString value)
+  | BuildValue ("real", _) (Real value) = return (Real.toString value)
+  | BuildValue ("string", _) (String value) = return value
+  | BuildValue (_, colName) _ = RuntimeException ("Column " ^ colName ^ " type differs from value type");
+
+fun BuildRow [] [] = return []
+  | BuildRow [] _ = RuntimeException "Too many values to insert."
+  | BuildRow _ [] = RuntimeException "Number of values does not match number of columns."
+  | BuildRow (dbColSpec::restDbColSpecs) (value::values) = (BuildValue dbColSpec value)
+                                                       >>= (fn (newValue) => (BuildRow restDbColSpecs values)
+                                                       >>= (fn (newValues) => return (newValue::newValues)));
+  
+fun ExecuteInsert (Insert (tableName, values)) (dbTableName, dbColSpecs, rows) = (BuildRow dbColSpecs values)
+                                                                             >>= (fn newRow => return (newRow::rows))
+  | ExecuteInsert _ _ = RuntimeException "Invalid query or table.";
 
 fun IsReadQuery query = case Tokenize query
                           of ((_, TSelect)::rest) => true
