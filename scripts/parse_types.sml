@@ -20,7 +20,12 @@ datatype Token = TSelect
                | TInvalid of string
                | TOpeningParanthesis
                | TClosingParanthesis
-               | TOperatorStar;
+               | TOperatorStar
+               | TTable
+               | TCreate
+               | TTypeInt
+               | TTypeReal
+               | TTypeString;
 
 fun ParseIntLeft value [] = (SOME value)
   | ParseIntLeft leftVal (ch::x) = if (Char.isDigit ch)
@@ -91,7 +96,12 @@ fun ParseToken tokenStr = case lower tokenStr
                              | "into"   => TInto
                              | "from"   => TFrom
                              | "values" => TValues
+                             | "table"  => TTable
+                             | "create" => TCreate
                              | "set"    => TSet
+                             | "int"    => TTypeInt
+                             | "real"   => TTypeReal
+                             | "string" => TTypeString
                              | "*"      => TOperatorStar
                              | value    => ParseDynamic tokenStr
 
@@ -234,22 +244,58 @@ fun ParseValues tokens = (ParseSingleValue tokens)
                          >>= (fn (cols, rest) => return (col::cols, rest)));
 
 fun ParseInsertValues ((_, TValues)::rest) = (ParseValues rest)
-  | ParseInsertValues ((columnNo, _)::rest) = ParseError (columnNo, "Expected VALUES keyword.")
-  | ParseInsertValues [] = ParseError (~1, "Expected VALUES keyword.");
+  | ParseInsertValues ((columnNo, _)::rest) = ParseError (columnNo, "Expected VALUES keyword")
+  | ParseInsertValues [] = ParseError (~1, "Expected VALUES keyword");
 
 fun ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(_, TIdentifier tableName)::tokens) = (ParseInsertValues tokens)
                                                     >>= (fn (conditions, rest) => return (tableName, conditions))
-  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(columnNo, _)::tokens) = ParseError (columnNo, "Expected table name.")
-  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::[]) = ParseError (~1, "Expected table name.")
-  | ParseInsertFromTokens ((_, TInsert)::(columnNo, _)::tokens) = ParseError (columnNo, "Expected INTO keyword.")
-  | ParseInsertFromTokens ((_, TInsert)::[]) = ParseError (~1, "Expected INTO keyword.")
-  | ParseInsertFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, "Expected INSERT keyword.")
-  | ParseInsertFromTokens [] = ParseError (~1, "Expected INSERT keyword.");
+  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::(columnNo, _)::tokens) = ParseError (columnNo, "Expected table name")
+  | ParseInsertFromTokens ((_, TInsert)::(_, TInto)::[]) = ParseError (~1, "Expected table name")
+  | ParseInsertFromTokens ((_, TInsert)::(columnNo, _)::tokens) = ParseError (columnNo, "Expected INTO keyword")
+  | ParseInsertFromTokens ((_, TInsert)::[]) = ParseError (~1, "Expected INTO keyword")
+  | ParseInsertFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, "Expected INSERT keyword")
+  | ParseInsertFromTokens [] = ParseError (~1, "Expected INSERT keyword");
 
+datatype InternalColSpec = ColInt of string
+                         | ColReal of string
+                         | ColString of string;
+
+fun ParseColSpec ((_, TIdentifier varName)::(_, TTypeInt)::rest) = return (ColInt varName, rest)
+  | ParseColSpec ((_, TIdentifier varName)::(_, TTypeReal)::rest) = return (ColReal varName, rest)
+  | ParseColSpec ((_, TIdentifier varName)::(_, TTypeString)::rest) = return (ColString varName, rest)
+  | ParseColSpec ((_, TIdentifier varName)::(columnNo, _)::rest) = ParseError (columnNo, "Expected type")
+  | ParseColSpec ((_, TIdentifier varName)::[]) = ParseError (~1, "Expected type")
+  | ParseColSpec ((columnNo, _)::rest) = ParseError (columnNo, "Expected identifier")
+  | ParseColSpec [] = ParseError (~1, "Expected identifier");
+
+fun ParseColSpecs tokens = (ParseColSpec tokens)
+                       >>= (fn (colSpec, rest) =>
+                        (case rest
+                           of ((columnNo, TClosingParanthesis)::rest) => return (colSpec::nil, (columnNo, TClosingParanthesis)::rest)
+                            | _ => (ParseColSpecs rest)
+                               >>= (fn (colSpecs, rest) => return (colSpec::colSpecs, rest))));
+
+fun ParseCreateTableColSpecs ((_, TOpeningParanthesis)::rest) = (ParseColSpecs rest) >>= (fn (cols, rest) => 
+      (case rest
+         of ((_, TClosingParanthesis)::rest) => return (cols, rest)
+          | ((columnNo, _)::rest) => ParseError (columnNo, "Expected closing paranthesis")
+          | [] => ParseError (~1, "Expected closing paranthesis")))
+  | ParseCreateTableColSpecs ((columnNo, _)::rest) = ParseError (columnNo, "Expected opening paranthesis for columns")
+  | ParseCreateTableColSpecs [] = ParseError (~1, "Expected opening paranthesis for columns");
+
+fun ParseCreateTableFromTokens ((_, TCreate)::(_, TTable)::(_, TIdentifier tableName)::tokens) = (ParseCreateTableColSpecs tokens)
+                                                    >>= (fn (conditions, rest) => return (tableName, conditions))
+  | ParseCreateTableFromTokens ((_, TCreate)::(_, TTable)::(columnNo, _)::tokens) = ParseError (columnNo, "Expected table name")
+  | ParseCreateTableFromTokens ((_, TCreate)::(_, TTable)::[]) = ParseError (~1, "Expected table name")
+  | ParseCreateTableFromTokens ((_, TCreate)::(columnNo, _)::tokens) = ParseError (columnNo, "Expected TABLE keyword")
+  | ParseCreateTableFromTokens ((_, TCreate)::[]) = ParseError (~1, "Expected TABLE keyword")
+  | ParseCreateTableFromTokens ((columnNo, _)::tokens) = ParseError (columnNo, "Expected CREATE keyword")
+  | ParseCreateTableFromTokens [] = ParseError (~1, "Expected CREATE keyword");
 
 datatype InternalQuery = Select of ColNameList * string * WhereCondition
                        | Insert of string * (Value list)
-                       | Delete of string * WhereCondition;
+                       | Delete of string * WhereCondition
+                       | CreateTable of string * (InternalColSpec list)
 
 fun ParseQueryFromTokens [] = ParseError (~1, "Expected primary expression - SELECT, DELETE, INSERT.")
   | ParseQueryFromTokens (head::tokens) = case head
@@ -261,6 +307,8 @@ fun ParseQueryFromTokens [] = ParseError (~1, "Expected primary expression - SEL
                                                     >>= (fn (tableName, values) => return (Insert (tableName, values)))
                                            | (_, TDelete) => (ParseDeleteFromTokens (head::tokens))
                                                     >>= (fn (tableName, whereConditions) => return (Delete (tableName, whereConditions)))
+                                           | (_, TCreate) => (ParseCreateTableFromTokens (head::tokens))
+                                                    >>= (fn (tableName, colSpecs) => return (CreateTable (tableName, colSpecs)))
                                            | (columnNo, _) => ParseError (columnNo, "Expected primary expression - SELECT, DELETE, INSERT.");
 
 fun IsEqual (Int x1) (Int x2) = return (x1 = x2)
@@ -374,10 +422,28 @@ fun ExecuteInsertOnTable (Insert (tableName, values)) (dbTableName, dbColSpecs, 
                                                                              >>= (fn newRow => return (newRow::rows))
   | ExecuteInsertOnTable _ _ = RuntimeException "Invalid query or table.";
 
+fun ExecuteCreateTable (CreateTable (tableName, [])) [] = RuntimeException "Could not create table with no columns."
+  | ExecuteCreateTable (CreateTable (tableName, (colSpec::colSpecs))) [] =
+    (case colSpec
+       of (ColInt colName) => return ("int", colName)
+        | (ColReal colName) => return ("real", colName)
+        | (ColString colName) => return ("string", colName))
+    >>= (fn (colSpec) =>
+        (case colSpecs
+           of [] => return (tableName, colSpec::nil, [])
+            | _  => (ExecuteCreateTable (CreateTable (tableName, colSpecs)) []) 
+                >>= (fn (tableName, colSpecs, rows) => return (tableName, colSpec::colSpecs, rows))))
+  | ExecuteCreateTable (CreateTable (tableName, colSpecs)) ((dbTableName, dbTableSpecs, dbTableRows)::restDb) =
+      (if tableName = dbTableName
+       then RuntimeException "A table with the same name already exists."
+       else (ExecuteCreateTable (CreateTable (tableName, colSpecs)) restDb));
+
 fun GetTable (Select (_, tableName, _)) = return tableName
   | GetTable (Insert (tableName, _)) = return tableName
   | GetTable (Delete (tableName, _)) = return tableName
 (*  | GetTable _ = RuntimeException "Invalid table operation.";*)
+
+fun ExecuteWriteInsertOnDb query db WriteMethod = (WriteMethod query db) >>= (fn (newTable) => return (newTable::db));
 
 fun ExecuteWriteUpdateOnDb query [] _ = (GetTable query) >>= (fn (tableName) => RuntimeException ("Table " ^ tableName ^ " not found"))
   | ExecuteWriteUpdateOnDb query ((dbTableName, dbColSpecs, rows)::restTables) WriteMethod = (GetTable query)
