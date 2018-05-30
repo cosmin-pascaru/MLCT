@@ -948,6 +948,13 @@ fun IsReadQuery query = case Tokenize query
           <id>newResultList</id>
           <layout>var newResultList : CUserQueryResultList;</layout>
         </var>
+        <var id="ID1413199146">
+          <type>
+            <id>CDatabase</id>
+          </type>
+          <id>newDb</id>
+          <layout>var newDb : CDatabase;</layout>
+        </var>
         <var id="ID1412518713">
           <type>
             <id>CQueryResult</id>
@@ -1107,21 +1114,27 @@ ParseQueryFromTokens (Tokenize queryStr) &gt;&gt;= (fn (query) =&gt; ExecuteSele
           <layout>fun ExecuteSelectAssumption queryStr db = 
 ParseQueryFromTokens (Tokenize queryStr) &gt;&gt;= (fn (query) =&gt; ExecuteSelect query db);</layout>
         </ml>
-        <ml id="ID1412714731">fun ExecuteQuery((uId, qType, qStr) : CInternalQuery, dbHead::dbTail : CDatabase) : CUserQueryResult = 
+        <ml id="ID1412714731">fun ExecuteQuery((uId, qType, qStr) : (CInternalQuery, dbHead::dbTail : CDatabase) : CUserQueryResult = 
 (uId, case (ExecuteSelectAssumption qStr dbHead) of 
   (ParseError (columnNo, msg)) =&gt; (msg ^ &quot; at column &quot; ^ (Int.toString columnNo), [])
         | (RuntimeException msg) =&gt; (msg, [])
         | (Result result) =&gt; (&quot;OK&quot;, result)
 )
-          <layout>fun ExecuteQuery((uId, qType, qStr) : CInternalQuery, dbHead::dbTail : CDatabase) : CUserQueryResult = 
+          <layout>fun ExecuteQuery((uId, qType, qStr) : (CInternalQuery, dbHead::dbTail : CDatabase) : CUserQueryResult = 
 (uId, case (ExecuteSelectAssumption qStr dbHead) of 
   (ParseError (columnNo, msg)) =&gt; (msg ^ &quot; at column &quot; ^ (Int.toString columnNo), [])
         | (RuntimeException msg) =&gt; (msg, [])
         | (Result result) =&gt; (&quot;OK&quot;, result)
 )</layout>
         </ml>
-        <ml id="ID1412845715">fun ExecuteQueries(queries, db) = map (fn q =&gt; ExecuteQuery(q, db)) queries;
-          <layout>fun ExecuteQueries(queries, db) = map (fn q =&gt; ExecuteQuery(q, db)) queries;</layout>
+        <ml id="ID1412845715">fun ExecuteQueries([], db) = return ([], db)
+    | ExecuteQueries(q::tail, db) = (ExecuteQuery q db)
+&gt;&gt;= (fn (qResult, newDb) =&gt; (ExecuteQueries tail newDb)
+&gt;&gt;= (fn (qResult2, newDb2) =&gt; return (qResult::qResult2, newDb2)));
+          <layout>fun ExecuteQueries([], db) = return ([], db)
+    | ExecuteQueries(q::tail, db) = (ExecuteQuery q db)
+&gt;&gt;= (fn (qResult, newDb) =&gt; (ExecuteQueries tail newDb)
+&gt;&gt;= (fn (qResult2, newDb2) =&gt; return (qResult::qResult2, newDb2)));</layout>
         </ml>
       </block>
     </globbox>
@@ -1391,6 +1404,110 @@ Queue</text>
                     bold="false"/>
           <text tool="CPN Tools"
                 version="4.0.1">[]</text>
+        </initmark>
+      </place>
+      <place id="ID1413200485">
+        <posattr x="-420.000000"
+                 y="588.000000"/>
+        <fillattr colour="White"
+                  pattern=""
+                  filled="false"/>
+        <lineattr colour="Black"
+                  thick="1"
+                  type="Solid"/>
+        <textattr colour="Black"
+                  bold="false"/>
+        <text></text>
+        <ellipse w="60.000000"
+                 h="40.000000"/>
+        <token x="-10.000000"
+               y="0.000000"/>
+        <marking x="0.000000"
+                 y="0.000000"
+                 hidden="false">
+          <snap snap_id="0"
+                anchor.horizontal="0"
+                anchor.vertical="0"/>
+        </marking>
+        <type id="ID1413200486">
+          <posattr x="-384.500000"
+                   y="564.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+          <text tool="CPN Tools"
+                version="4.0.1">INT</text>
+        </type>
+        <initmark id="ID1413200487">
+          <posattr x="-363.000000"
+                   y="611.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+          <text tool="CPN Tools"
+                version="4.0.1"/>
+        </initmark>
+      </place>
+      <place id="ID1413200508">
+        <posattr x="-101.000000"
+                 y="588.000000"/>
+        <fillattr colour="White"
+                  pattern=""
+                  filled="false"/>
+        <lineattr colour="Black"
+                  thick="1"
+                  type="Solid"/>
+        <textattr colour="Black"
+                  bold="false"/>
+        <text></text>
+        <ellipse w="60.000000"
+                 h="40.000000"/>
+        <token x="-10.000000"
+               y="0.000000"/>
+        <marking x="0.000000"
+                 y="0.000000"
+                 hidden="false">
+          <snap snap_id="0"
+                anchor.horizontal="0"
+                anchor.vertical="0"/>
+        </marking>
+        <type id="ID1413200509">
+          <posattr x="-58.500000"
+                   y="564.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+          <text tool="CPN Tools"
+                version="4.0.1">BOOL</text>
+        </type>
+        <initmark id="ID1413200510">
+          <posattr x="-44.000000"
+                   y="611.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+          <text tool="CPN Tools"
+                version="4.0.1"/>
         </initmark>
       </place>
       <trans id="ID1412469616"
@@ -1700,6 +1817,87 @@ Queries</text>
         <priority id="ID1412589303">
           <posattr x="239.000000"
                    y="347.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+          <text tool="CPN Tools"
+                version="4.0.1"/>
+        </priority>
+      </trans>
+      <trans id="ID1413200462"
+             explicit="false">
+        <posattr x="-252.000000"
+                 y="609.000000"/>
+        <fillattr colour="White"
+                  pattern=""
+                  filled="false"/>
+        <lineattr colour="Black"
+                  thick="1"
+                  type="Solid"/>
+        <textattr colour="Black"
+                  bold="false"/>
+        <text></text>
+        <box w="60.000000"
+             h="40.000000"/>
+        <binding x="7.200000"
+                 y="-3.000000"/>
+        <cond id="ID1413200463">
+          <posattr x="-291.000000"
+                   y="640.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+          <text tool="CPN Tools"
+                version="4.0.1"/>
+        </cond>
+        <time id="ID1413200464">
+          <posattr x="-207.500000"
+                   y="640.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+          <text tool="CPN Tools"
+                version="4.0.1"/>
+        </time>
+        <code id="ID1413200465">
+          <posattr x="-118.500000"
+                   y="529.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+          <text tool="CPN Tools"
+                version="4.0.1">input (idx0);
+output (b, idx1);
+action
+let
+   val (x,y) = (fn a =&gt; (true,a)) 2
+in
+    (x,y)
+end</text>
+        </code>
+        <priority id="ID1413200467">
+          <posattr x="-320.000000"
+                   y="578.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -2167,8 +2365,8 @@ Queries</text>
                     bold="false"/>
         </bendpoint>
         <annot id="ID1412556235">
-          <posattr x="157.000000"
-                   y="45.000000"/>
+          <posattr x="162.000000"
+                   y="50.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -2288,6 +2486,70 @@ Queries</text>
                     bold="false"/>
           <text tool="CPN Tools"
                 version="4.0.1">RemoveResult(resultList, userId)</text>
+        </annot>
+      </arc>
+      <arc id="ID1413200586"
+           orientation="PtoT"
+           order="1">
+        <posattr x="0.000000"
+                 y="0.000000"/>
+        <fillattr colour="White"
+                  pattern=""
+                  filled="false"/>
+        <lineattr colour="Black"
+                  thick="1"
+                  type="Solid"/>
+        <textattr colour="Black"
+                  bold="false"/>
+        <arrowattr headsize="1.200000"
+                   currentcyckle="2"/>
+        <transend idref="ID1413200462"/>
+        <placeend idref="ID1413200485"/>
+        <annot id="ID1413200587">
+          <posattr x="-339.000000"
+                   y="611.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+          <text tool="CPN Tools"
+                version="4.0.1">idx0</text>
+        </annot>
+      </arc>
+      <arc id="ID1413200649"
+           orientation="TtoP"
+           order="1">
+        <posattr x="0.000000"
+                 y="0.000000"/>
+        <fillattr colour="White"
+                  pattern=""
+                  filled="false"/>
+        <lineattr colour="Black"
+                  thick="1"
+                  type="Solid"/>
+        <textattr colour="Black"
+                  bold="false"/>
+        <arrowattr headsize="1.200000"
+                   currentcyckle="2"/>
+        <transend idref="ID1413200462"/>
+        <placeend idref="ID1413200508"/>
+        <annot id="ID1413200650">
+          <posattr x="-162.000000"
+                   y="609.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+          <text tool="CPN Tools"
+                version="4.0.1">b</text>
         </annot>
       </arc>
       <constraints/>
@@ -3792,7 +4054,7 @@ Queries</text>
                   filled="false"/>
         <lineattr colour="Black"
                   thick="1"
-                  type="Solid"/>
+                  type="solid"/>
         <textattr colour="Black"
                   bold="false"/>
         <text>Execute 0</text>
@@ -3828,9 +4090,9 @@ Queries</text>
           <text tool="CPN Tools"
                 version="4.0.1"/>
         </time>
-        <code id="ID1412813816">
-          <posattr x="-7.500000"
-                   y="472.000000"/>
+        <code id="ID1413200432">
+          <posattr x="579.500000"
+                   y="615.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -3840,9 +4102,16 @@ Queries</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1"/>
+                version="4.0.1">input (wrkData, db);
+output (newResultList, newDb);
+action
+let
+    val (x,y) = ExecuteQueries(wrkData, db)
+in
+    (x, y);
+end</text>
         </code>
-        <priority id="ID1412813818">
+        <priority id="ID1413199283">
           <posattr x="-140.000000"
                    y="493.000000"/>
           <fillattr colour="White"
@@ -3866,7 +4135,7 @@ Queries</text>
                   filled="false"/>
         <lineattr colour="Black"
                   thick="1"
-                  type="Solid"/>
+                  type="solid"/>
         <textattr colour="Black"
                   bold="false"/>
         <text>Execute 1</text>
@@ -3940,7 +4209,7 @@ Queries</text>
                   filled="false"/>
         <lineattr colour="Black"
                   thick="1"
-                  type="Solid"/>
+                  type="solid"/>
         <textattr colour="Black"
                   bold="false"/>
         <text>Signal
@@ -5385,8 +5654,8 @@ Done</text>
                  height="617">
         <sheets>
           <cpnsheet id="ID1412538422"
-                    panx="172.000000"
-                    pany="236.000000"
+                    panx="24.000000"
+                    pany="374.000000"
                     zoom="1.000000"
                     instance="ID2149">
             <zorder>
@@ -5413,9 +5682,9 @@ Done</text>
           </cpnsheet>
         </sheets>
         <zorder>
-          <position value="2"/>
           <position value="1"/>
           <position value="0"/>
+          <position value="2"/>
         </zorder>
       </cpnbinder>
     </binders>
@@ -5538,6 +5807,7 @@ Done</text>
           <IndexNode expanded="true"/>
         </IndexNode>
         <IndexNode expanded="true">
+          <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
