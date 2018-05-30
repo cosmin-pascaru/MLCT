@@ -340,23 +340,23 @@ fun SelectColumns All dbColSpecs row = return row
                                                      >>= (fn (values) => return (value::values)))
   | SelectColumns (Columns []) dbColSpecs row = return [];
 
-fun ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
-  | ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
+fun ExecuteSelectOnTable (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
+  | ExecuteSelectOnTable (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
           (ShouldSelectRow whereConditions dbColSpecs row)
-      >>= (fn (shouldSelectRow) => (ExecuteSelect (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
+      >>= (fn (shouldSelectRow) => (ExecuteSelectOnTable (Select (columns, tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
       >>= (fn (rows) => (if shouldSelectRow
                          then (SelectColumns columns dbColSpecs row) >>= (fn (projectedRow) => return (projectedRow::rows))
                          else return rows)))
-  | ExecuteSelect _ _ = RuntimeException "Invalid query or table.";
+  | ExecuteSelectOnTable _ _ = RuntimeException "Invalid query or table.";
 
-fun ExecuteDelete (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
-  | ExecuteDelete (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
+fun ExecuteDeleteOnTable (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, []) = return []
+  | ExecuteDeleteOnTable (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, (row::restDbRows)) =
           (ShouldSelectRow whereConditions dbColSpecs row)
-      >>= (fn (shouldSelectRow) => (ExecuteDelete (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
+      >>= (fn (shouldSelectRow) => (ExecuteDeleteOnTable (Delete (tableName, whereConditions)) (dbTableName, dbColSpecs, restDbRows))
       >>= (fn (rows) => (if shouldSelectRow
                          then return rows
                          else return (row::rows))))
-  | ExecuteDelete _ _ = RuntimeException "Invalid query or table.";
+  | ExecuteDeleteOnTable _ _ = RuntimeException "Invalid query or table.";
 
 fun BuildValue ("int", _) (Int value) = return (Int.toString value)
   | BuildValue ("real", _) (Real value) = return (Real.toString value)
@@ -370,10 +370,31 @@ fun BuildRow [] [] = return []
                                                        >>= (fn (newValue) => (BuildRow restDbColSpecs values)
                                                        >>= (fn (newValues) => return (newValue::newValues)));
   
-fun ExecuteInsert (Insert (tableName, values)) (dbTableName, dbColSpecs, rows) = (BuildRow dbColSpecs values)
+fun ExecuteInsertOnTable (Insert (tableName, values)) (dbTableName, dbColSpecs, rows) = (BuildRow dbColSpecs values)
                                                                              >>= (fn newRow => return (newRow::rows))
-  | ExecuteInsert _ _ = RuntimeException "Invalid query or table.";
+  | ExecuteInsertOnTable _ _ = RuntimeException "Invalid query or table.";
 
-fun IsReadQuery query = case Tokenize query
-                          of ((_, TSelect)::rest) => true
-                           | _ => false;
+fun GetTable (Select (_, tableName, _)) = return tableName
+  | GetTable (Insert (tableName, _)) = return tableName
+  | GetTable (Delete (tableName, _)) = return tableName
+(*  | GetTable _ = RuntimeException "Invalid table operation.";*)
+
+fun ExecuteWriteUpdateOnDb query [] _ = (GetTable query) >>= (fn (tableName) => RuntimeException ("Table " ^ tableName ^ " not found"))
+  | ExecuteWriteUpdateOnDb query ((dbTableName, dbColSpecs, rows)::restTables) WriteMethod = (GetTable query)
+    >>= (fn (tableName) =>
+      (if dbTableName = tableName
+       then (WriteMethod query (dbTableName, dbColSpecs, rows))
+        >>= (fn (modifiedTableRows) => return ((dbTableName, dbColSpecs, modifiedTableRows)::restTables))
+       else (ExecuteWriteUpdateOnDb query restTables WriteMethod)
+        >>= (fn (modifiedDatabase) => return ((dbTableName, dbColSpecs, rows)::modifiedDatabase))));
+
+fun ExecuteReadOnDb query [] _ = (GetTable query) >>= (fn (tableName) => RuntimeException ("Table " ^ tableName ^ " not found"))
+  | ExecuteReadOnDb query ((dbTableName, dbColSpecs, rows)::restTables) ReadMethod = (GetTable query)
+    >>= (fn (tableName) =>
+      (if dbTableName = tableName
+       then (ReadMethod query (dbTableName, dbColSpecs, rows))
+       else (ExecuteReadOnDb query restTables ReadMethod)));
+
+fun IsReadQuery queryStr = case Tokenize queryStr
+                             of ((_, TSelect)::rest) => true
+                              | _ => false;
