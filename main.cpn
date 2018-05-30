@@ -753,21 +753,17 @@ fun IsReadQuery query = case Tokenize query
         </color>
         <color id="ID1412461372">
           <id>CCell</id>
-          <product>
-            <id>BOOL</id>
+          <alias>
             <id>STRING</id>
-          </product>
-          <layout>colset CCell = product BOOL * STRING;</layout>
+          </alias>
+          <layout>colset CCell = STRING;</layout>
         </color>
         <color id="ID1412452613">
           <id>CColType</id>
-          <enum>
+          <alias>
             <id>STRING</id>
-            <id>INT</id>
-            <id>REAL</id>
-            <id>TIME</id>
-          </enum>
-          <layout>colset CColType = with STRING | INT | REAL | TIME;</layout>
+          </alias>
+          <layout>colset CColType = STRING;</layout>
         </color>
         <color id="ID1412452378">
           <id>CColSpec</id>
@@ -862,11 +858,11 @@ fun IsReadQuery query = case Tokenize query
           <layout>colset CUserQuery = product CUserId * CQueryString;</layout>
         </color>
         <color id="ID1412523175">
-          <id>CQueryResultCode</id>
+          <id>CQueryResultMsg</id>
           <alias>
-            <id>INT</id>
+            <id>STRING</id>
           </alias>
-          <layout>colset CQueryResultCode = INT;</layout>
+          <layout>colset CQueryResultMsg = STRING;</layout>
         </color>
         <color id="ID1412524334">
           <id>CQueryResultRows</id>
@@ -878,10 +874,10 @@ fun IsReadQuery query = case Tokenize query
         <color id="ID1412508386">
           <id>CQueryResult</id>
           <product>
-            <id>CQueryResultCode</id>
+            <id>CQueryResultMsg</id>
             <id>CQueryResultRows</id>
           </product>
-          <layout>colset CQueryResult = product CQueryResultCode * CQueryResultRows;</layout>
+          <layout>colset CQueryResult = product CQueryResultMsg * CQueryResultRows;</layout>
         </color>
         <color id="ID1412507409">
           <id>CUserQueryResult</id>
@@ -1099,8 +1095,23 @@ List.concat [(if currIdx mod wrkCnt = wrkIdx then [h] else []), GetWorkerData(ta
   | GetWorkerData(h::tail, currIdx, wrkIdx, wrkCnt) = 
 List.concat [(if currIdx mod wrkCnt = wrkIdx then [h] else []), GetWorkerData(tail, currIdx + 1, wrkIdx, wrkCnt)]</layout>
         </ml>
-        <ml id="ID1412714731">fun ExecuteQuery(query : CInternalQuery, db : CDatabase) : CUserQueryResult = (0, (0, []))
-          <layout>fun ExecuteQuery(query : CInternalQuery, db : CDatabase) : CUserQueryResult = (0, (0, []))</layout>
+        <ml id="ID1412889078">fun ExecuteSelectAssumption queryStr db = 
+ParseQueryFromTokens (Tokenize queryStr) &gt;&gt;= (fn (query) =&gt; ExecuteSelect query db);
+          <layout>fun ExecuteSelectAssumption queryStr db = 
+ParseQueryFromTokens (Tokenize queryStr) &gt;&gt;= (fn (query) =&gt; ExecuteSelect query db);</layout>
+        </ml>
+        <ml id="ID1412714731">fun ExecuteQuery((uId, qType, qStr) : CInternalQuery, dbHead::dbTail : CDatabase) : CUserQueryResult = 
+(uId, case (ExecuteSelectAssumption qStr dbHead) of 
+  (ParseError (columnNo, msg)) =&gt; (msg ^ &quot; at column &quot; ^ (Int.toString columnNo), [])
+        | (RuntimeException msg) =&gt; (msg, [])
+        | (Result result) =&gt; (&quot;OK&quot;, result)
+)
+          <layout>fun ExecuteQuery((uId, qType, qStr) : CInternalQuery, dbHead::dbTail : CDatabase) : CUserQueryResult = 
+(uId, case (ExecuteSelectAssumption qStr dbHead) of 
+  (ParseError (columnNo, msg)) =&gt; (msg ^ &quot; at column &quot; ^ (Int.toString columnNo), [])
+        | (RuntimeException msg) =&gt; (msg, [])
+        | (Result result) =&gt; (&quot;OK&quot;, result)
+)</layout>
         </ml>
         <ml id="ID1412845715">fun ExecuteQueries(queries, db) = map (fn q =&gt; ExecuteQuery(q, db)) queries;
           <layout>fun ExecuteQueries(queries, db) = map (fn q =&gt; ExecuteQuery(q, db)) queries;</layout>
@@ -1147,7 +1158,7 @@ List.concat [(if currIdx mod wrkCnt = wrkIdx then [h] else []), GetWorkerData(ta
                 version="4.0.1">CUserId</text>
         </type>
         <initmark id="ID1412469333">
-          <posattr x="-429.000000"
+          <posattr x="-420.000000"
                    y="359.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -1158,7 +1169,7 @@ List.concat [(if currIdx mod wrkCnt = wrkIdx then [h] else []), GetWorkerData(ta
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1"/>
+                version="4.0.1">1` 0 ++ 1` 1</text>
         </initmark>
       </place>
       <place id="ID1412470162">
@@ -1199,7 +1210,7 @@ List.concat [(if currIdx mod wrkCnt = wrkIdx then [h] else []), GetWorkerData(ta
                 version="4.0.1">CQueryString</text>
         </type>
         <initmark id="ID1412470164">
-          <posattr x="-447.000000"
+          <posattr x="-402.000000"
                    y="120.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -1210,7 +1221,7 @@ List.concat [(if currIdx mod wrkCnt = wrkIdx then [h] else []), GetWorkerData(ta
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1"/>
+                version="4.0.1">1` &quot;SELECT * from dual&quot;</text>
         </initmark>
       </place>
       <place id="ID1412470434">
@@ -1253,7 +1264,7 @@ Queries</text>
                 version="4.0.1">CUserQuery</text>
         </type>
         <initmark id="ID1412470436">
-          <posattr x="-111.000000"
+          <posattr x="-123.500000"
                    y="129.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -1264,7 +1275,7 @@ Queries</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1"/>
+                version="4.0.1">empty</text>
         </initmark>
       </place>
       <place id="ID1412505038">
@@ -1307,7 +1318,7 @@ Results</text>
                 version="4.0.1">CUserQueryResultList</text>
         </type>
         <initmark id="ID1412505040">
-          <posattr x="-46.000000"
+          <posattr x="-73.000000"
                    y="375.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -1318,7 +1329,7 @@ Results</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1"/>
+                version="4.0.1">[]</text>
         </initmark>
       </place>
       <place id="ID1412526668">
@@ -1361,7 +1372,7 @@ Queue</text>
                 version="4.0.1">CInternalQueryQueue</text>
         </type>
         <initmark id="ID1412526670">
-          <posattr x="266.000000"
+          <posattr x="239.000000"
                    y="128.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -1372,7 +1383,7 @@ Queue</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1"/>
+                version="4.0.1">[]</text>
         </initmark>
       </place>
       <trans id="ID1412469616"
@@ -2503,7 +2514,7 @@ Results</text>
                 version="4.0.1">CUserQueryResultList</text>
         </type>
         <initmark id="ID1412651532">
-          <posattr x="-41.000000"
+          <posattr x="-68.000000"
                    y="387.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -2514,7 +2525,7 @@ Results</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1"/>
+                version="4.0.1">[]</text>
         </initmark>
       </place>
       <trans id="ID1412589310"
@@ -3220,12 +3231,12 @@ Results</text>
                  h="40.000000"/>
         <token x="-10.000000"
                y="0.000000"/>
-        <marking x="0.000000"
+        <marking x="-1.000000"
                  y="0.000000"
                  hidden="false">
-          <snap snap_id="0"
-                anchor.horizontal="0"
-                anchor.vertical="0"/>
+          <snap snap_id="2"
+                anchor.horizontal="1"
+                anchor.vertical="3"/>
         </marking>
         <type id="ID1412703990">
           <posattr x="-242.500000"
@@ -3241,7 +3252,7 @@ Results</text>
           <text tool="CPN Tools"
                 version="4.0.1">CUserQueryResultList</text>
         </type>
-        <initmark id="ID1412703991">
+        <initmark id="ID1412955589">
           <posattr x="-279.000000"
                    y="443.000000"/>
           <fillattr colour="White"
@@ -3374,7 +3385,7 @@ Set</text>
                 version="4.0.1">CInternalQueryQueue</text>
         </type>
         <initmark id="ID1412746152">
-          <posattr x="16.000000"
+          <posattr x="151.500000"
                    y="653.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
@@ -3385,7 +3396,7 @@ Set</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1">1` []</text>
+                version="4.0.1">1` [(0, READ, &quot;SELECTMLCT col1 FROM table1&quot;)]</text>
         </initmark>
       </place>
       <place id="ID1412746492">
@@ -3562,12 +3573,12 @@ Workers</text>
                  h="62.000000"/>
         <token x="-10.000000"
                y="0.000000"/>
-        <marking x="0.000000"
-                 y="0.000000"
+        <marking x="8.000000"
+                 y="-48.000000"
                  hidden="false">
           <snap snap_id="0"
-                anchor.horizontal="0"
-                anchor.vertical="0"/>
+                anchor.horizontal="1"
+                anchor.vertical="1"/>
         </marking>
         <type id="ID1412846510">
           <posattr x="-37.000000"
@@ -3584,8 +3595,8 @@ Workers</text>
                 version="4.0.1">CDatabase</text>
         </type>
         <initmark id="ID1412846511">
-          <posattr x="-40.000000"
-                   y="451.000000"/>
+          <posattr x="22.000000"
+                   y="462.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -3595,7 +3606,7 @@ Workers</text>
           <textattr colour="Black"
                     bold="false"/>
           <text tool="CPN Tools"
-                version="4.0.1"/>
+                version="4.0.1">1` [(&quot;table1&quot;, [(&quot;col1&quot;, &quot;string&quot;)], [[&quot;v1&quot;]])]</text>
         </initmark>
       </place>
       <trans id="ID1412703983"
@@ -3693,7 +3704,7 @@ remWorkers = 0</text>
              h="40.000000"/>
         <binding x="7.200000"
                  y="-3.000000"/>
-        <cond id="ID1412813814">
+        <cond id="ID1412961306">
           <posattr x="-111.000000"
                    y="555.000000"/>
           <fillattr colour="White"
@@ -3767,7 +3778,7 @@ remWorkers = 0</text>
              h="36.000000"/>
         <binding x="7.200000"
                  y="-3.000000"/>
-        <cond id="ID1412815145">
+        <cond id="ID1412962459">
           <posattr x="-113.000000"
                    y="323.000000"/>
           <fillattr colour="White"
@@ -4266,8 +4277,8 @@ remWorkers = 0</text>
         <transend idref="ID1412813813"/>
         <placeend idref="ID1412746150"/>
         <annot id="ID1412816488">
-          <posattr x="-85.500000"
-                   y="586.000000"/>
+          <posattr x="-78.500000"
+                   y="585.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -4297,9 +4308,35 @@ remWorkers = 0</text>
                    currentcyckle="2"/>
         <transend idref="ID1412813813"/>
         <placeend idref="ID1412746150"/>
+        <bendpoint id="ID1412985132"
+                   serial="1">
+          <posattr x="-53.000000"
+                   y="546.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+        </bendpoint>
+        <bendpoint id="ID1412951067"
+                   serial="2">
+          <posattr x="-23.000000"
+                   y="571.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+        </bendpoint>
         <annot id="ID1412817838">
-          <posattr x="-48.000000"
-                   y="586.000000"/>
+          <posattr x="-62.000000"
+                   y="545.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -4506,7 +4543,7 @@ remWorkers = 0</text>
       </arc>
       <arc id="ID1412831236"
            orientation="PtoT"
-           order="2">
+           order="1">
         <posattr x="0.000000"
                  y="0.000000"/>
         <fillattr colour="White"
@@ -4567,8 +4604,8 @@ remWorkers = 0</text>
                     bold="false"/>
         </bendpoint>
         <annot id="ID1412832710">
-          <posattr x="-237.000000"
-                   y="561.000000"/>
+          <posattr x="-256.000000"
+                   y="527.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -4660,7 +4697,7 @@ remWorkers = 0</text>
       </arc>
       <arc id="ID1412851342"
            orientation="PtoT"
-           order="1">
+           order="2">
         <posattr x="0.000000"
                  y="0.000000"/>
         <fillattr colour="White"
@@ -4676,8 +4713,8 @@ remWorkers = 0</text>
         <transend idref="ID1412813813"/>
         <placeend idref="ID1412846509"/>
         <annot id="ID1412851343">
-          <posattr x="-78.000000"
-                   y="471.000000"/>
+          <posattr x="-71.000000"
+                   y="470.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -4692,7 +4729,7 @@ remWorkers = 0</text>
       </arc>
       <arc id="ID1412852972"
            orientation="PtoT"
-           order="1">
+           order="2">
         <posattr x="0.000000"
                  y="0.000000"/>
         <fillattr colour="White"
@@ -4708,8 +4745,72 @@ remWorkers = 0</text>
         <transend idref="ID1412815144"/>
         <placeend idref="ID1412846509"/>
         <annot id="ID1412852973">
-          <posattr x="-78.000000"
+          <posattr x="-86.000000"
                    y="356.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+          <text tool="CPN Tools"
+                version="4.0.1">db</text>
+        </annot>
+      </arc>
+      <arc id="ID1412931327"
+           orientation="TtoP"
+           order="1">
+        <posattr x="0.000000"
+                 y="0.000000"/>
+        <fillattr colour="White"
+                  pattern=""
+                  filled="false"/>
+        <lineattr colour="Black"
+                  thick="1"
+                  type="Solid"/>
+        <textattr colour="Black"
+                  bold="false"/>
+        <arrowattr headsize="1.200000"
+                   currentcyckle="2"/>
+        <transend idref="ID1412813813"/>
+        <placeend idref="ID1412846509"/>
+        <annot id="ID1412931328">
+          <posattr x="-85.000000"
+                   y="470.000000"/>
+          <fillattr colour="White"
+                    pattern="Solid"
+                    filled="false"/>
+          <lineattr colour="Black"
+                    thick="0"
+                    type="Solid"/>
+          <textattr colour="Black"
+                    bold="false"/>
+          <text tool="CPN Tools"
+                version="4.0.1">db</text>
+        </annot>
+      </arc>
+      <arc id="ID1412933467"
+           orientation="TtoP"
+           order="1">
+        <posattr x="0.000000"
+                 y="0.000000"/>
+        <fillattr colour="White"
+                  pattern=""
+                  filled="false"/>
+        <lineattr colour="Black"
+                  thick="1"
+                  type="Solid"/>
+        <textattr colour="Black"
+                  bold="false"/>
+        <arrowattr headsize="1.200000"
+                   currentcyckle="2"/>
+        <transend idref="ID1412815144"/>
+        <placeend idref="ID1412846509"/>
+        <annot id="ID1412933468">
+          <posattr x="-71.000000"
+                   y="357.000000"/>
           <fillattr colour="White"
                     pattern="Solid"
                     filled="false"/>
@@ -4978,8 +5079,8 @@ remWorkers = 0</text>
     </options>
     <binders>
       <cpnbinder id="ID1412538433"
-                 x="923"
-                 y="120"
+                 x="712"
+                 y="130"
                  width="1129"
                  height="617">
         <sheets>
@@ -5012,8 +5113,8 @@ remWorkers = 0</text>
           </cpnsheet>
         </sheets>
         <zorder>
-          <position value="1"/>
           <position value="0"/>
+          <position value="1"/>
           <position value="2"/>
         </zorder>
       </cpnbinder>
@@ -5103,7 +5204,7 @@ remWorkers = 0</text>
           <IndexNode expanded="true"/>
         </IndexNode>
         <IndexNode expanded="true">
-          <IndexNode expanded="true"/>
+          <IndexNode expanded="false"/>
         </IndexNode>
         <IndexNode expanded="false">
           <IndexNode expanded="true"/>
@@ -5124,36 +5225,36 @@ remWorkers = 0</text>
         <IndexNode expanded="true">
           <IndexNode expanded="true"/>
         </IndexNode>
+        <IndexNode expanded="true">
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+        </IndexNode>
+        <IndexNode expanded="true">
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+          <IndexNode expanded="true"/>
+        </IndexNode>
         <IndexNode expanded="false">
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-        </IndexNode>
-        <IndexNode expanded="true">
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-          <IndexNode expanded="true"/>
-        </IndexNode>
-        <IndexNode expanded="true">
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
@@ -5168,6 +5269,7 @@ remWorkers = 0</text>
         <IndexNode expanded="true">
           <IndexNode expanded="true"/>
           <IndexNode expanded="false"/>
+          <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
           <IndexNode expanded="true"/>
